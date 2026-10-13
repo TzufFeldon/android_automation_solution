@@ -1,0 +1,5 @@
+{
+  "package_name": "com.example.demo",
+  "minimum_android_version": 10,
+  "minimum_battery": 20
+}

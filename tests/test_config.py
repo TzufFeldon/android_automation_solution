@@ -1,0 +1,195 @@
+"""Configuration loading tests. These tests do not call ADB."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from android_runner.config import AppConfig, ConfigError, load_config
+
+_VALID = {
+    "package_name": "com.example.demo",
+    "minimum_android_version": 10,
+    "minimum_battery": 20,
+}
+
+
+def _write(directory: Path, payload: object) -> Path:
+    path = directory / "config.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _assert_error(path: Path, match: str) -> str:
+    with pytest.raises(ConfigError, match=match) as caught:
+        load_config(path)
+    message = str(caught.value)
+    assert "Traceback" not in message
+    assert "\n" not in message
+    assert message.endswith(".")
+    return message
+
+
+def test_valid_config(tmp_path: Path) -> None:
+    config = load_config(_write(tmp_path, _VALID))
+
+    assert config == AppConfig(
+        package_name="com.example.demo",
+        minimum_android_version=10,
+        minimum_battery=20,
+        device_id=None,
+    )
+
+
+def test_present_device_id(tmp_path: Path) -> None:
+    payload = {**_VALID, "device_id": "emulator-5554"}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.device_id == "emulator-5554"
+
+
+def test_empty_device_id_means_no_selection(tmp_path: Path) -> None:
+    payload = {**_VALID, "device_id": ""}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.device_id is None
+
+
+def test_null_device_id_means_no_selection(tmp_path: Path) -> None:
+    payload = {**_VALID, "device_id": None}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.device_id is None
+
+
+def test_battery_bounds_are_accepted(tmp_path: Path) -> None:
+    for level in (0, 100):
+        payload = {**_VALID, "minimum_battery": level}
+        config = load_config(_write(tmp_path, payload))
+        assert config.minimum_battery == level
+
+
+def test_android_version_bounds_are_accepted(tmp_path: Path) -> None:
+    for version in (1, 99):
+        payload = {**_VALID, "minimum_android_version": version}
+        config = load_config(_write(tmp_path, payload))
+        assert config.minimum_android_version == version
+
+
+def test_missing_file_names_the_path(tmp_path: Path) -> None:
+    path = tmp_path / "missing.json"
+
+    message = _assert_error(path, "not found")
+
+    assert str(path) in message
+
+
+def test_invalid_json_names_path_message_line_and_column(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text('{\n  "package_name": \n}\n', encoding="utf-8")
+
+    message = _assert_error(path, r"invalid JSON: .+ \(line \d+, column \d+\)")
+
+    assert str(path) in message
+    assert "line 3" in message
+
+
+def test_non_object_root_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text("[]", encoding="utf-8")
+
+    _assert_error(path, "JSON object")
+
+
+def test_missing_required_field_is_named(tmp_path: Path) -> None:
+    payload = {
+        "minimum_android_version": 10,
+        "minimum_battery": 20,
+    }
+
+    _assert_error(_write(tmp_path, payload), "required field 'package_name'")
+
+
+def test_unknown_field_is_rejected(tmp_path: Path) -> None:
+    payload = {**_VALID, "min_battery": 15}
+
+    _assert_error(_write(tmp_path, payload), "unknown field 'min_battery'")
+
+
+def test_package_name_must_be_a_string(tmp_path: Path) -> None:
+    payload = {**_VALID, "package_name": 12}
+
+    _assert_error(_write(tmp_path, payload), "package_name")
+
+
+def test_invalid_package_name_is_rejected(tmp_path: Path) -> None:
+    payload = {**_VALID, "package_name": "not a package"}
+
+    _assert_error(_write(tmp_path, payload), "Android package name")
+
+
+def test_boolean_is_rejected_for_android_version(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_android_version": True}
+
+    message = _assert_error(_write(tmp_path, payload), "minimum_android_version")
+
+    assert "boolean" in message
+
+
+def test_boolean_is_rejected_for_battery(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_battery": False}
+
+    message = _assert_error(_write(tmp_path, payload), "minimum_battery")
+
+    assert "boolean" in message
+
+
+def test_float_is_rejected(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_android_version": 10.0}
+
+    message = _assert_error(_write(tmp_path, payload), "minimum_android_version")
+
+    assert "number" in message
+
+
+def test_android_version_out_of_range(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_android_version": 0}
+
+    _assert_error(_write(tmp_path, payload), "from 1 through 99")
+
+
+def test_battery_out_of_range(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_battery": 101}
+
+    _assert_error(_write(tmp_path, payload), "from 0 through 100")
+
+
+def test_device_id_whitespace_is_rejected(tmp_path: Path) -> None:
+    payload = {**_VALID, "device_id": " emulator-5554"}
+
+    _assert_error(_write(tmp_path, payload), "leading or trailing whitespace")
+
+
+def test_directory_path_is_rejected(tmp_path: Path) -> None:
+    _assert_error(tmp_path, "directory")
+
+
+def test_invalid_utf8_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xff\xfe{")
+
+    _assert_error(path, "UTF-8")
+
+
+def test_shipped_config_loads() -> None:
+    config = load_config(Path(__file__).resolve().parents[1] / "config.json")
+
+    assert config.package_name == "com.example.demo"
+    assert config.minimum_android_version == 10
+    assert config.minimum_battery == 20
+    assert config.device_id is None
