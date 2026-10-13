@@ -21,5 +21,6 @@ htmlcov/
 .DS_Store
 
 # Runner output
-logs/
+logs/*
+!logs/.gitkeep
 report.txt
