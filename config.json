@@ -2,6 +2,5 @@
   "package_name": "com.android.settings",
   "minimum_android_version": 10,
   "minimum_battery": 20,
-  "minimum_free_storage_mb": 100,
-  "interval_seconds": 30
+  "minimum_free_storage_mb": 100
 }

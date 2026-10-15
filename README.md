@@ -21,8 +21,7 @@ Edit `config.json`.
   "package_name": "com.android.settings",
   "minimum_android_version": 10,
   "minimum_battery": 20,
-  "minimum_free_storage_mb": 100,
-  "interval_seconds": 30
+  "minimum_free_storage_mb": 100
 }
 ```
 
@@ -32,12 +31,12 @@ Edit `config.json`.
 | `package_name`            | Package to check, launch, and find in the foreground.                                                                           |
 | `minimum_android_version` | Integer 1–99. `8.1.0` counts as 8.                                                                                              |
 | `minimum_battery`         | Integer 0–100. The level must be greater than this value.                                                                       |
-| `minimum_free_storage_mb` | Integer 0–1048576. Free MiB on `/data` must be greater than this value.                                                         |
+| `minimum_free_storage_mb` | Optional integer 0–1048576. Omit it or set `null` to skip the storage check. Free MiB on `/data` must be greater than this value. |
 | `device_id`               | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a list when several are ready. |
 | `interval_seconds`        | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C stops after the current pass.              |
 
 
-`package_name`, `minimum_android_version`, `minimum_battery`, and `minimum_free_storage_mb` are required. Floats, booleans, and unknown keys are rejected. Missing fields are named in the error. The file is validated before any ADB call.
+`package_name`, `minimum_android_version`, and `minimum_battery` are required. A file with only those three fields runs one pass and skips the storage check. The shipped file also sets `minimum_free_storage_mb` and does not set `interval_seconds`, so `python3 main.py` checks storage once and exits. Floats, booleans, and unknown keys are rejected. Missing required fields are named in the error. The file is validated before any ADB call.
 
 ## Run
 
@@ -57,7 +56,7 @@ A failure does not stop the rest. If installation fails, launch and the foregrou
 1. Device answers `echo hello`.
 2. Android major version meets the minimum.
 3. Battery percent is above the minimum.
-4. Free space on `/data` is above the minimum.
+4. Free space on `/data` is above the minimum. This check is `SKIP` when `minimum_free_storage_mb` is omitted or `null`.
 5. A default route exists and is not `dummy0`.
 6. The screen is awake. The tool does not turn it on.
 7. The package is installed (`pm path`).
@@ -165,7 +164,6 @@ Tests mock `subprocess.run`. No device or `adb` binary is required. They cover v
 - Keep each interval pass instead of overwriting the same two files.
 - Retry one timed-out ADB command before failing the check.
 - After `monkey`, wait briefly for the package to become the resumed activity instead of reading it once immediately.
-- Make storage, network, screen, and foreground optional in config, so a file with only the three base fields still runs.
 - Summarize crash blocks in the failure log (exception and process) instead of only counting error lines.
 - Run the same pytest job on Windows as well as Ubuntu.
 

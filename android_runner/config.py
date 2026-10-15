@@ -15,9 +15,15 @@ _REQUIRED_FIELDS = (
     "package_name",
     "minimum_android_version",
     "minimum_battery",
-    "minimum_free_storage_mb",
 )
-_ALLOWED_FIELDS = frozenset((*_REQUIRED_FIELDS, "device_id", "interval_seconds"))
+_ALLOWED_FIELDS = frozenset(
+    (
+        *_REQUIRED_FIELDS,
+        "minimum_free_storage_mb",
+        "device_id",
+        "interval_seconds",
+    )
+)
 
 _ANDROID_VERSION_MIN = 1
 _ANDROID_VERSION_MAX = 99
@@ -40,7 +46,7 @@ class AppConfig:
     package_name: str
     minimum_android_version: int
     minimum_battery: int
-    minimum_free_storage_mb: int
+    minimum_free_storage_mb: int | None = None
     device_id: str | None = None
     interval_seconds: int | None = None
 
@@ -104,8 +110,8 @@ def _validate(payload: object) -> AppConfig:
         _BATTERY_MIN,
         _BATTERY_MAX,
     )
-    minimum_free_storage_mb = _require_bounded_int(
-        payload["minimum_free_storage_mb"],
+    minimum_free_storage_mb = _optional_bounded_int(
+        payload.get("minimum_free_storage_mb"),
         "minimum_free_storage_mb",
         _STORAGE_MIN,
         _STORAGE_MAX,

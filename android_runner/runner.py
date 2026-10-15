@@ -91,7 +91,12 @@ def run_checks(
     reachable = _run_one(adb, info.serial, logs_dir, None, lambda: _reachable(adb, info))
     version = _run_one(adb, info.serial, logs_dir, None, lambda: _version(config, info))
     battery = _run_one(adb, info.serial, logs_dir, None, lambda: _battery(config, info))
-    storage = _run_one(adb, info.serial, logs_dir, None, lambda: _storage(adb, config, info))
+    if config.minimum_free_storage_mb is None:
+        storage = _skip(_STORAGE, "Skipped: not configured")
+    else:
+        storage = _run_one(
+            adb, info.serial, logs_dir, None, lambda: _storage(adb, config, info)
+        )
     network = _run_one(adb, info.serial, logs_dir, None, lambda: _network(adb, info))
     screen = _run_one(adb, info.serial, logs_dir, None, lambda: _screen(adb, info))
     install = _run_one(
@@ -181,6 +186,7 @@ def _battery(config: AppConfig, info: DeviceInfo) -> CheckResult:
 
 def _storage(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult:
     minimum = config.minimum_free_storage_mb
+    assert minimum is not None
     try:
         result = adb.shell(info.serial, "df", "-k", "/data")
     except AdbError as exc:

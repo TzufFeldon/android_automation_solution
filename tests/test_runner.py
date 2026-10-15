@@ -800,6 +800,24 @@ def test_error_note_counts_only_threadtime_error_and_fatal_lines() -> None:
     assert _error_note("nothing\n") is None
 
 
+def test_unconfigured_storage_is_skipped_without_adb(tmp_path: Path) -> None:
+    adb = _passing_adb()
+
+    results = run_checks(
+        adb,
+        _config(minimum_free_storage_mb=None),
+        _info(),
+        tmp_path / "logs",
+    )
+
+    storage = _check(results, "Free storage")
+    assert storage.status is Status.SKIP
+    assert storage.explanation == "Skipped: not configured"
+    assert storage.log_path is None
+    assert ("shell", "emulator-5554", ("df", "-k", "/data")) not in adb.calls
+    assert _check(results, "Launch application").status is Status.PASS
+
+
 def test_storage_compares_truncated_mebibytes(tmp_path: Path) -> None:
     cases = [
         (204_800, 100, Status.PASS, "Free storage: 200 MB\nMinimum required: 100 MB"),

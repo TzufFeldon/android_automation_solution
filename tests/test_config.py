@@ -67,6 +67,30 @@ def test_null_device_id_means_no_selection(tmp_path: Path) -> None:
     assert config.device_id is None
 
 
+def test_assignment_fields_alone_load(tmp_path: Path) -> None:
+    payload = {
+        "package_name": "com.example.demo",
+        "minimum_android_version": 10,
+        "minimum_battery": 20,
+    }
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config == AppConfig(
+        package_name="com.example.demo",
+        minimum_android_version=10,
+        minimum_battery=20,
+    )
+
+
+def test_null_storage_threshold_is_unset(tmp_path: Path) -> None:
+    payload = {**_VALID, "minimum_free_storage_mb": None}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.minimum_free_storage_mb is None
+
+
 def test_absent_interval_means_one_pass(tmp_path: Path) -> None:
     config = load_config(_write(tmp_path, _VALID))
 
@@ -241,7 +265,7 @@ def test_shipped_config_loads() -> None:
     assert config.minimum_battery == 20
     assert config.minimum_free_storage_mb == 100
     assert config.device_id is None
-    assert config.interval_seconds == 30
+    assert config.interval_seconds is None
 
 
 def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
@@ -287,7 +311,7 @@ def test_several_missing_fields_are_all_named(tmp_path: Path) -> None:
     assert "package_name" in message
     assert "minimum_android_version" in message
     assert "minimum_battery" in message
-    assert "minimum_free_storage_mb" in message
+    assert "minimum_free_storage_mb" not in message
 
 
 def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
@@ -306,8 +330,7 @@ def test_unknown_and_missing_fields_are_reported_together(tmp_path: Path) -> Non
 
     assert message == (
         "Configuration contains unknown fields 'aaa', 'zzz' and is missing "
-        "required fields 'minimum_android_version', 'minimum_battery', "
-        "'minimum_free_storage_mb'."
+        "required fields 'minimum_android_version', 'minimum_battery'."
     )
 
 
