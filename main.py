@@ -9,7 +9,7 @@ from pathlib import Path
 
 from android_runner.adb import AdbClient, AdbError
 from android_runner.config import AppConfig, ConfigError, load_config
-from android_runner.report import ReportError, write_report
+from android_runner.report import ReportError, json_report_path, write_report
 from android_runner.runner import Status, run_checks
 
 
@@ -56,6 +56,7 @@ def _run_once(
     logs_dir = Path(args.logs)
     results = run_checks(adb, config, info, logs_dir)
     report_path = Path(args.report)
+    json_path = json_report_path(report_path)
     try:
         write_report(report_path, info, results)
     except ReportError as exc:
@@ -63,7 +64,7 @@ def _run_once(
         return 2, None
     failed = sum(result.status is Status.FAIL for result in results)
     overall = "FAIL" if failed else "PASS"
-    print(f"Overall: {overall}; report written to {report_path}.")
+    print(f"Overall: {overall}; report written to {report_path} and {json_path}.")
     return (1 if failed else 0), serial
 
 
@@ -77,7 +78,7 @@ def _stop(last_code: int | None) -> int:
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run Android device checks and write a text report."
+        description="Run Android device checks and write a text report and a JSON report."
     )
     parser.add_argument(
         "--config",

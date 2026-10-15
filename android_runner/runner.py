@@ -1,8 +1,10 @@
-"""Run the five device checks and save logcat output after a failure."""
+"""Run the device checks and save logcat output after a failure."""
 
 from __future__ import annotations
 
 import enum
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -13,10 +15,35 @@ from android_runner.config import AppConfig
 _REACHABLE = "Device is reachable"
 _VERSION = "Android version"
 _BATTERY = "Battery level"
+_STORAGE = "Free storage"
+_NETWORK = "Network"
+_SCREEN = "Screen state"
 _INSTALL = "Application installation"
 _LAUNCH = "Launch application"
+_FOREGROUND = "Foreground activity"
+_WAKEFULNESS = re.compile(r"^mWakefulness=(\S+)$")
+_SCREEN_ON = re.compile(r"^mScreenOn=(true|false)$")
+_COMPONENT = re.compile(
+    r"([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+/[A-Za-z0-9_.$]+)"
+)
+_WAKE_NAMES = {
+    "Awake": "Awake",
+    "Asleep": "Asleep",
+    "Dozing": "Dozing",
+    "Dreaming": "Dreaming",
+    "0": "Asleep",
+    "1": "Awake",
+    "2": "Dreaming",
+    "3": "Dozing",
+}
 _LOG_MAX_BYTES = 1_048_576
 _TRUNCATED_LOG = "Log truncated to the most recent 1 MB."
+_LOG_CLOCK = "Log capture failed because the device clock could not be read."
+_LOG_READ = "Log capture failed because logcat could not be read."
+_LOG_WRITE = "Log capture failed because the log file could not be written."
+_THREADTIME_ERROR = re.compile(
+    r"^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+\d+\s+\d+\s+[EF]\s+(\S+)\s*:\s?(.*)$"
+)
 
 
 class Status(enum.StrEnum):
@@ -53,13 +80,57 @@ def run_checks(
     info: DeviceInfo,
     logs_dir: Path,
 ) -> list[CheckResult]:
-    """Run the five checks in order. Version and battery reuse ``info``."""
-    reachable = _with_log(adb, info.serial, logs_dir, _reachable(adb, info))
-    version = _with_log(adb, info.serial, logs_dir, _version(config, info))
-    battery = _with_log(adb, info.serial, logs_dir, _battery(config, info))
-    install = _with_log(adb, info.serial, logs_dir, _installation(adb, config, info))
-    launch = _with_log(adb, info.serial, logs_dir, _launch(adb, config, info, install))
-    return [reachable, version, battery, install, launch]
+    """Run the checks in order. Version and battery reuse ``info``."""
+    reachable = _run_one(adb, info.serial, logs_dir, None, lambda: _reachable(adb, info))
+    version = _run_one(adb, info.serial, logs_dir, None, lambda: _version(config, info))
+    battery = _run_one(adb, info.serial, logs_dir, None, lambda: _battery(config, info))
+    storage = _run_one(adb, info.serial, logs_dir, None, lambda: _storage(adb, config, info))
+    network = _run_one(adb, info.serial, logs_dir, None, lambda: _network(adb, info))
+    screen = _run_one(adb, info.serial, logs_dir, None, lambda: _screen(adb, info))
+    install = _run_one(
+        adb,
+        info.serial,
+        logs_dir,
+        config.package_name,
+        lambda: _installation(adb, config, info),
+    )
+    launch = _run_one(
+        adb,
+        info.serial,
+        logs_dir,
+        config.package_name,
+        lambda: _launch(adb, config, info, install),
+    )
+    foreground = _run_one(
+        adb,
+        info.serial,
+        logs_dir,
+        config.package_name,
+        lambda: _foreground(adb, config, info, install),
+    )
+    return [
+        reachable,
+        version,
+        battery,
+        storage,
+        network,
+        screen,
+        install,
+        launch,
+        foreground,
+    ]
+
+
+def _run_one(
+    adb: AdbClient,
+    serial: str,
+    logs_dir: Path,
+    package_name: str | None,
+    check: Callable[[], CheckResult],
+) -> CheckResult:
+    """Read the device clock, run one check, then save a failure log."""
+    since = adb.device_log_time(serial)
+    return _with_log(adb, serial, logs_dir, check(), since, package_name)
 
 
 def _reachable(adb: AdbClient, info: DeviceInfo) -> CheckResult:
@@ -124,6 +195,75 @@ def _battery(config: AppConfig, info: DeviceInfo) -> CheckResult:
     )
 
 
+def _storage(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult:
+    minimum = config.minimum_free_storage_mb
+    try:
+        result = adb.shell(info.serial, "df", "-k", "/data")
+    except AdbError as exc:
+        explanation = (
+            "The storage check timed out."
+            if exc.timed_out
+            else "The storage check failed."
+        )
+        return _fail(_STORAGE, explanation)
+    free_mb = None if result.returncode != 0 else _free_storage_mb(result.stdout)
+    if free_mb is None:
+        return _fail(_STORAGE, "Free storage could not be read.")
+    if free_mb > minimum:
+        return _pass(
+            _STORAGE,
+            f"Free storage is {free_mb} MB, which is greater than {minimum} MB.",
+        )
+    if free_mb == minimum:
+        return _fail(
+            _STORAGE,
+            f"Free storage is {free_mb} MB, which is equal to {minimum} MB "
+            "and must be above it.",
+        )
+    return _fail(
+        _STORAGE,
+        f"Free storage is {free_mb} MB, which is lower than {minimum} MB.",
+    )
+
+
+def _network(adb: AdbClient, info: DeviceInfo) -> CheckResult:
+    try:
+        result = adb.shell(info.serial, "ip", "route", "show", "table", "all")
+    except AdbError as exc:
+        explanation = (
+            "The network check timed out."
+            if exc.timed_out
+            else "The network check failed."
+        )
+        return _fail(_NETWORK, explanation)
+    if result.returncode != 0:
+        return _fail(_NETWORK, "The network check failed.")
+    if _has_default_route(result.stdout):
+        return _pass(_NETWORK, "A default network route is present.")
+    return _fail(
+        _NETWORK,
+        "No default network route is present, so the device cannot reach other networks.",
+    )
+
+
+def _screen(adb: AdbClient, info: DeviceInfo) -> CheckResult:
+    try:
+        result = adb.shell(info.serial, "dumpsys", "power")
+    except AdbError as exc:
+        explanation = (
+            "The screen check timed out."
+            if exc.timed_out
+            else "The screen check failed."
+        )
+        return _fail(_SCREEN, explanation)
+    state = None if result.returncode != 0 else _screen_state(result.stdout)
+    if state is None:
+        return _fail(_SCREEN, "Screen state could not be read.")
+    if state == "Awake":
+        return _pass(_SCREEN, "Screen state is Awake.")
+    return _fail(_SCREEN, f"Screen state is {state}.")
+
+
 def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult:
     package_name = config.package_name
     try:
@@ -143,6 +283,23 @@ def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckR
     )
 
 
+def _install_skip(
+    name: str,
+    package_name: str,
+    install: CheckResult,
+) -> CheckResult | None:
+    """Skip ``name`` when installation failed. ``None`` when it passed."""
+    if install.status is not Status.FAIL:
+        return None
+    if install.install_cause is InstallCause.MISSING:
+        explanation = f"Skipped because {package_name} is not installed."
+    else:
+        explanation = (
+            f"Skipped because installation of {package_name} could not be confirmed."
+        )
+    return _skip(name, explanation)
+
+
 def _launch(
     adb: AdbClient,
     config: AppConfig,
@@ -150,15 +307,9 @@ def _launch(
     install: CheckResult,
 ) -> CheckResult:
     package_name = config.package_name
-    if install.status is Status.FAIL:
-        if install.install_cause is InstallCause.MISSING:
-            explanation = f"Skipped because {package_name} is not installed."
-        else:
-            explanation = (
-                f"Skipped because installation of {package_name} could not "
-                "be confirmed."
-            )
-        return _skip(_LAUNCH, explanation)
+    skipped = _install_skip(_LAUNCH, package_name, install)
+    if skipped is not None:
+        return skipped
     try:
         result = adb.launch_package(info.serial, package_name)
     except AdbError as exc:
@@ -182,6 +333,99 @@ def _launch(
     return _fail(_LAUNCH, explanation)
 
 
+def _foreground(
+    adb: AdbClient,
+    config: AppConfig,
+    info: DeviceInfo,
+    install: CheckResult,
+) -> CheckResult:
+    package_name = config.package_name
+    skipped = _install_skip(_FOREGROUND, package_name, install)
+    if skipped is not None:
+        return skipped
+    try:
+        result = adb.shell(info.serial, "dumpsys", "activity", "activities")
+    except AdbError as exc:
+        explanation = (
+            f"The foreground check for {package_name} timed out."
+            if exc.timed_out
+            else f"The foreground check for {package_name} failed."
+        )
+        return _fail(_FOREGROUND, explanation)
+    component = None if result.returncode != 0 else _foreground_component(result.stdout)
+    if component is None:
+        return _fail(_FOREGROUND, "Foreground activity could not be read.")
+    if component.split("/", 1)[0] == package_name:
+        return _pass(_FOREGROUND, f"Foreground activity is {component}.")
+    return _fail(
+        _FOREGROUND,
+        f"Foreground activity is {component}, not {package_name}.",
+    )
+
+
+def _free_storage_mb(text: str) -> int | None:
+    """Available mebibytes from ``df -k``. Truncates 1024 KiB blocks toward zero."""
+    for raw_line in text.splitlines():
+        tokens = raw_line.split()
+        for index, token in enumerate(tokens):
+            if not token.endswith("%") or index == 0:
+                continue
+            available = tokens[index - 1]
+            if available.isdigit():
+                return int(available) // 1024
+    return None
+
+
+def _has_default_route(text: str) -> bool:
+    """True when a usable ``default`` route exists.
+
+    Android keeps that route in a per-network table, so ``ip route`` alone
+    misses it. ``default dev dummy0`` is the unreachable placeholder and
+    does not count.
+    """
+    for raw_line in text.splitlines():
+        tokens = raw_line.split()
+        if tokens and tokens[0] == "default" and "dummy0" not in tokens:
+            return True
+    return False
+
+
+def _screen_state(text: str) -> str | None:
+    """``Awake``, ``Asleep``, ``Dozing``, or ``Dreaming``. ``None`` when unread."""
+    wakefulness: str | None = None
+    screen_on: str | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if wakefulness is None:
+            match = _WAKEFULNESS.match(line)
+            if match is not None:
+                wakefulness = match.group(1)
+                continue
+        if screen_on is None:
+            match = _SCREEN_ON.match(line)
+            if match is not None:
+                screen_on = match.group(1)
+    if wakefulness is not None:
+        return _WAKE_NAMES.get(wakefulness)
+    if screen_on == "true":
+        return "Awake"
+    if screen_on == "false":
+        return "Asleep"
+    return None
+
+
+def _foreground_component(text: str) -> str | None:
+    """First ``topResumedActivity``, else the first ``mResumedActivity``."""
+    for marker in ("topResumedActivity=", "mResumedActivity:"):
+        for raw_line in text.splitlines():
+            if marker not in raw_line:
+                continue
+            match = _COMPONENT.search(raw_line)
+            if match is not None:
+                return match.group(1)
+    return None
+
+
 def _has_package_line(result: CommandResult) -> bool:
     return any(line.strip().startswith("package:") for line in result.stdout.splitlines())
 
@@ -191,25 +435,83 @@ def _with_log(
     serial: str,
     logs_dir: Path,
     result: CheckResult,
+    since: str | None,
+    package_name: str | None,
 ) -> CheckResult:
     if result.status is not Status.FAIL:
         return result
+    if since is None:
+        return replace(result, log_error=_LOG_CLOCK)
     path: Path | None = None
     try:
         logs_dir.mkdir(parents=True, exist_ok=True)
-        text, note = _bounded_log(adb.logcat(serial))
+        text = adb.logcat(serial, since)
+        if package_name is not None:
+            text = _filter_package_log(text, package_name)
+        text, truncated = _bounded_log(text)
         path = logs_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{_slug(result.name)}.log"
         path.write_text(text, encoding="utf-8")
     except AdbError:
-        return replace(result, log_error="Log capture failed")
+        return replace(result, log_error=_LOG_READ)
     except OSError:
         if path is not None:
             try:
                 path.unlink(missing_ok=True)
             except OSError:
                 pass
-        return replace(result, log_error="Log capture failed")
-    return replace(result, log_path=path, log_note=note)
+        return replace(result, log_error=_LOG_WRITE)
+    return replace(
+        result,
+        log_path=path,
+        log_note=_join_notes(truncated, _error_note(text)),
+    )
+
+
+def _filter_package_log(text: str, package_name: str) -> str:
+    """Keep package lines and crash blocks through the next empty line."""
+    lines = text.splitlines()
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if "FATAL EXCEPTION" in line or "AndroidRuntime" in line:
+            kept.append(line)
+            index += 1
+            while index < len(lines) and lines[index].strip() != "":
+                kept.append(lines[index])
+                index += 1
+            if index < len(lines) and lines[index].strip() == "":
+                index += 1
+            continue
+        if package_name in line:
+            kept.append(line)
+        index += 1
+    if not kept:
+        return ""
+    return "\n".join(kept) + "\n"
+
+
+def _error_note(text: str) -> str | None:
+    """Count threadtime ``E`` and ``F`` lines. ``None`` when there are none."""
+    found: list[str] = []
+    for line in text.splitlines():
+        match = _THREADTIME_ERROR.match(line.strip())
+        if match is None:
+            continue
+        tag = match.group(1)
+        message = match.group(2).strip()
+        found.append(f"{tag}: {message}" if message else tag)
+    if not found:
+        return None
+    noun = "line" if len(found) == 1 else "lines"
+    return f"{len(found)} error {noun} in this check. First: {found[0]}."
+
+
+def _join_notes(*notes: str | None) -> str | None:
+    present = [note for note in notes if note]
+    if not present:
+        return None
+    return " ".join(present)
 
 
 def _bounded_log(text: str) -> tuple[str, str | None]:

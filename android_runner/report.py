@@ -1,7 +1,8 @@
-"""Build the text report from device info and check results."""
+"""Build the text and JSON reports from device info and check results."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from android_runner.adb import DeviceInfo
@@ -12,11 +13,22 @@ class ReportError(Exception):
     """The report could not be written. The message is one sentence."""
 
 
+def json_report_path(path: str | Path) -> Path:
+    """JSON file written beside the text report.
+
+    ``report.txt`` becomes ``report.json``. A text path that already ends in
+    ``.json`` becomes ``<name>.json.json`` so the two files stay distinct.
+    """
+    report_path = Path(path)
+    sibling = report_path.with_suffix(".json")
+    if sibling == report_path:
+        return report_path.with_name(f"{report_path.name}.json")
+    return sibling
+
+
 def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
     """Report text, including the trailing newline."""
-    passed = sum(result.status is Status.PASS for result in results)
-    failed = sum(result.status is Status.FAIL for result in results)
-    skipped = sum(result.status is Status.SKIP for result in results)
+    passed, failed, skipped = _counts(results)
     lines = [
         "Android Automation Report",
         "=========================",
@@ -57,16 +69,58 @@ def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult]) -> None:
-    """Write the report to ``path``, creating parent directories.
+def render_json(info: DeviceInfo, results: list[CheckResult]) -> str:
+    """JSON report, including the trailing newline.
 
-    Raises ``ReportError`` when the path cannot be written.
+    Unread device fields stay ``null``. An empty string stays ``""``.
+    ``log_path`` is a POSIX path when a failure log was saved.
+    """
+    passed, failed, skipped = _counts(results)
+    payload = {
+        "device": {
+            "id": info.serial,
+            "android_version": info.android_version,
+            "android_major": info.android_major,
+            "model": info.model,
+            "manufacturer": info.manufacturer,
+            "battery_percent": info.battery_percent,
+        },
+        "checks": [
+            {
+                "name": result.name,
+                "status": result.status.value,
+                "explanation": result.explanation,
+                "log_path": (
+                    None if result.log_path is None else result.log_path.as_posix()
+                ),
+                "log_note": result.log_note,
+                "log_error": result.log_error,
+            }
+            for result in results
+        ],
+        "totals": {
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "all": passed + failed + skipped,
+        },
+        "overall": "FAIL" if failed else "PASS",
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+
+
+def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult]) -> None:
+    """Write the text report and the sibling JSON report.
+
+    Parent directories are created. Raises ``ReportError`` when either path
+    cannot be written.
     """
     report_path = Path(path)
+    json_path = json_report_path(report_path)
     text = render_report(info, results)
+    payload = render_json(info, results)
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(text, encoding="utf-8")
     except IsADirectoryError:
         raise ReportError(f"Report path is a directory: {report_path}.") from None
     except PermissionError:
@@ -76,6 +130,29 @@ def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult])
         raise ReportError(
             f"Report file could not be written: {report_path} ({detail})."
         ) from None
+    _write_text(report_path, text)
+    _write_text(json_path, payload)
+
+
+def _write_text(path: Path, text: str) -> None:
+    try:
+        path.write_text(text, encoding="utf-8")
+    except IsADirectoryError:
+        raise ReportError(f"Report path is a directory: {path}.") from None
+    except PermissionError:
+        raise ReportError(f"Report file is not writable: {path}.") from None
+    except OSError as exc:
+        detail = exc.strerror or exc.__class__.__name__
+        raise ReportError(
+            f"Report file could not be written: {path} ({detail})."
+        ) from None
+
+
+def _counts(results: list[CheckResult]) -> tuple[int, int, int]:
+    passed = sum(result.status is Status.PASS for result in results)
+    failed = sum(result.status is Status.FAIL for result in results)
+    skipped = sum(result.status is Status.SKIP for result in results)
+    return passed, failed, skipped
 
 
 def _text(value: str | None) -> str:

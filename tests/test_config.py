@@ -11,6 +11,7 @@ _VALID = {
     "package_name": "com.android.settings",
     "minimum_android_version": 10,
     "minimum_battery": 20,
+    "minimum_free_storage_mb": 100,
 }
 
 
@@ -37,6 +38,7 @@ def test_valid_config(tmp_path: Path) -> None:
         package_name="com.android.settings",
         minimum_android_version=10,
         minimum_battery=20,
+        minimum_free_storage_mb=100,
         device_id=None,
     )
 
@@ -93,6 +95,13 @@ def test_battery_bounds_are_accepted(tmp_path: Path) -> None:
         assert config.minimum_battery == level
 
 
+def test_storage_bounds_are_accepted(tmp_path: Path) -> None:
+    for mebibytes in (0, 1_048_576):
+        payload = {**_VALID, "minimum_free_storage_mb": mebibytes}
+        config = load_config(_write(tmp_path, payload))
+        assert config.minimum_free_storage_mb == mebibytes
+
+
 def test_android_version_bounds_are_accepted(tmp_path: Path) -> None:
     for version in (1, 99):
         payload = {**_VALID, "minimum_android_version": version}
@@ -129,6 +138,7 @@ def test_missing_required_field_is_named(tmp_path: Path) -> None:
     payload = {
         "minimum_android_version": 10,
         "minimum_battery": 20,
+        "minimum_free_storage_mb": 100,
     }
 
     _assert_error(_write(tmp_path, payload), "required field 'package_name'")
@@ -211,8 +221,9 @@ def test_shipped_config_loads() -> None:
     assert config.package_name == "com.android.settings"
     assert config.minimum_android_version == 10
     assert config.minimum_battery == 20
+    assert config.minimum_free_storage_mb == 100
     assert config.device_id is None
-    assert config.interval_seconds == 120
+    assert config.interval_seconds == 30
 
 
 def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
@@ -258,6 +269,7 @@ def test_several_missing_fields_are_all_named(tmp_path: Path) -> None:
     assert "package_name" in message
     assert "minimum_android_version" in message
     assert "minimum_battery" in message
+    assert "minimum_free_storage_mb" in message
 
 
 def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
@@ -280,6 +292,10 @@ def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
         ("minimum_battery", 20.0, "integer"),
         ("minimum_battery", -1, "0 through 100"),
         ("minimum_battery", True, "boolean"),
+        ("minimum_free_storage_mb", 100.0, "integer"),
+        ("minimum_free_storage_mb", -1, "0 through 1048576"),
+        ("minimum_free_storage_mb", 1_048_577, "0 through 1048576"),
+        ("minimum_free_storage_mb", True, "boolean"),
         ("package_name", None, "string"),
         ("package_name", "example", "Android package name"),
         ("package_name", "com.", "Android package name"),

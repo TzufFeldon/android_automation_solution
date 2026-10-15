@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from android_runner.adb import DeviceInfo
-from android_runner.report import ReportError, render_report, write_report
+from android_runner.report import (
+    ReportError,
+    json_report_path,
+    render_json,
+    render_report,
+    write_report,
+)
 from android_runner.runner import CheckResult, Status
 
 _SAMPLE = """\
@@ -217,5 +224,85 @@ def test_write_report_overwrites_and_creates_parent_directories(tmp_path: Path) 
     write_report(path, _info(android_version="8.1.0"), [])
 
     text = path.read_text(encoding="utf-8")
+    payload = json.loads((tmp_path / "out" / "report.json").read_text(encoding="utf-8"))
     assert "Android version: 8.1.0" in text
     assert "Battery level" not in text
+    assert payload["device"]["android_version"] == "8.1.0"
+    assert payload["checks"] == []
+    assert payload["overall"] == "PASS"
+
+
+def test_json_report_matches_the_text_totals_and_log_paths() -> None:
+    payload = json.loads(render_json(_info(), _sample_results()))
+
+    assert payload["device"] == {
+        "id": "emulator-5554",
+        "android_version": "14",
+        "android_major": 14,
+        "model": "sdk_gphone64_arm64",
+        "manufacturer": "Google",
+        "battery_percent": 86,
+    }
+    assert [check["status"] for check in payload["checks"]] == [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL",
+        "SKIP",
+    ]
+    assert payload["checks"][2]["log_path"] == "logs/20261013-215301_battery_level.log"
+    assert payload["checks"][2]["log_note"] is None
+    assert payload["checks"][2]["log_error"] is None
+    assert payload["checks"][0]["log_path"] is None
+    assert payload["totals"] == {"passed": 2, "failed": 2, "skipped": 1, "all": 5}
+    assert payload["overall"] == "FAIL"
+    assert render_json(_info(), _sample_results()).endswith("\n")
+
+
+def test_json_keeps_null_fields_a_zero_battery_and_log_details() -> None:
+    info = _info(
+        android_version=None,
+        android_major=None,
+        model=None,
+        manufacturer="",
+        battery_percent=0,
+    )
+    results = [
+        _result(
+            "Battery level",
+            Status.FAIL,
+            "Battery level could not be read.",
+            log_error="Log capture failed",
+            log_note="Log truncated to the most recent 1 MB.",
+        )
+    ]
+
+    payload = json.loads(render_json(info, results))
+
+    assert payload["device"]["android_version"] is None
+    assert payload["device"]["android_major"] is None
+    assert payload["device"]["model"] is None
+    assert payload["device"]["manufacturer"] == ""
+    assert payload["device"]["battery_percent"] == 0
+    assert payload["checks"][0]["log_path"] is None
+    assert payload["checks"][0]["log_error"] == "Log capture failed"
+    assert payload["checks"][0]["log_note"] == "Log truncated to the most recent 1 MB."
+    assert payload["overall"] == "FAIL"
+
+
+def test_json_report_path_replaces_the_text_suffix(tmp_path: Path) -> None:
+    assert json_report_path(tmp_path / "report.txt") == tmp_path / "report.json"
+    assert json_report_path(tmp_path / "custom.log") == tmp_path / "custom.json"
+    assert json_report_path(tmp_path / "report.json") == tmp_path / "report.json.json"
+
+
+def test_write_report_rejects_a_json_path_that_is_a_directory(tmp_path: Path) -> None:
+    (tmp_path / "report.json").mkdir()
+
+    with pytest.raises(ReportError, match="report.json") as caught:
+        write_report(tmp_path / "report.txt", _info(), [])
+
+    message = str(caught.value)
+    assert "directory" in message
+    assert message.endswith(".")
+    assert "Traceback" not in message

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import pytest
 
 from android_runner import adb as adb_module
-from android_runner.adb import LOGCAT_MAX_LINES, AdbClient, AdbError, DeviceRecord
+from android_runner.adb import AdbClient, AdbError, DeviceRecord
 
 _SERIAL = "emulator-5554"
 _OTHER = "emulator-5556"
@@ -453,20 +453,52 @@ def test_launch_package_uses_monkey_without_a_shell_string(
     assert calls == [list(command)]
 
 
-def test_logcat_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
-    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES))
-    client, calls = _client(monkeypatch, {command: (0, "log line\n", "")})
+def test_device_log_time_appends_millis(monkeypatch: pytest.MonkeyPatch) -> None:
+    command = ("adb", "-s", _SERIAL, "shell", "date", "+%m-%dT%H:%M:%S")
+    client, calls = _client(monkeypatch, {command: (0, "10-15T14:05:00\n", "")})
 
-    assert client.logcat(_SERIAL) == "log line\n"
+    assert client.device_log_time(_SERIAL) == "10-15 14:05:00.000"
     assert calls == [list(command)]
 
 
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        (1, "", "bad date"),
+        (0, "\n", ""),
+        (0, "Thu Oct 15 14:05:00 IST 2026\n", ""),
+        subprocess.TimeoutExpired(["adb"], 20),
+    ],
+)
+def test_device_log_time_returns_none_when_the_clock_cannot_be_read(
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: object,
+) -> None:
+    command = ("adb", "-s", _SERIAL, "shell", "date", "+%m-%dT%H:%M:%S")
+    client, _calls = _client(monkeypatch, {command: outcome})
+
+    assert client.device_log_time(_SERIAL) is None
+
+
+def test_logcat_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    since = "10-15 14:05:00.000"
+    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", since)
+    client, calls = _client(monkeypatch, {command: (0, "log line\n", "")})
+
+    assert client.logcat(_SERIAL, since) == "log line\n"
+    assert calls == [list(command)]
+    assert "-c" not in calls[0]
+    assert "--pid" not in calls[0]
+    assert "2000" not in calls[0]
+
+
 def test_logcat_nonzero_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES))
+    since = "10-15 14:05:00.000"
+    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", since)
     client, _calls = _client(monkeypatch, {command: (2, "", "busy")})
 
     with pytest.raises(AdbError, match="exit code 2: busy") as caught:
-        client.logcat(_SERIAL)
+        client.logcat(_SERIAL, since)
 
     assert caught.value.timed_out is False
 

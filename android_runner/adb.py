@@ -9,7 +9,6 @@ import sys
 from dataclasses import dataclass
 
 TIMEOUT_SECONDS = 20
-LOGCAT_MAX_LINES = 2000
 
 _ADB_MISSING = (
     "Android SDK Platform-Tools is not available; install it, put "
@@ -18,6 +17,7 @@ _ADB_MISSING = (
 _LEVEL_LINE = re.compile(r"^level:\s*(-?\d+)$")
 _SCALE_LINE = re.compile(r"^scale:\s*(-?\d+)$")
 _MAJOR_VERSION = re.compile(r"(\d+)")
+_DEVICE_TIME = re.compile(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 
 class AdbError(Exception):
@@ -114,12 +114,30 @@ class AdbClient:
             "1",
         )
 
-    def logcat(self, serial: str) -> str:
-        """Return the most recent ``LOGCAT_MAX_LINES`` from ``logcat -d``.
+    def device_log_time(self, serial: str) -> str | None:
+        """Device-local ``MM-DD HH:MM:SS.000`` for ``logcat -t``.
 
-        Raises ``AdbError`` on failure.
+        The format uses ``T`` instead of a space. Toybox ``date`` allows one
+        argument, and ``adb shell`` splits a format that contains a space.
+        ``None`` when ``date`` fails, times out, or prints something else.
         """
-        args = ["-s", serial, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES)]
+        try:
+            result = self.shell(serial, "date", "+%m-%dT%H:%M:%S")
+        except AdbError:
+            return None
+        if result.returncode != 0:
+            return None
+        stamp = result.stdout.strip().replace("T", " ", 1)
+        if _DEVICE_TIME.fullmatch(stamp) is None:
+            return None
+        return f"{stamp}.000"
+
+    def logcat(self, serial: str, since: str) -> str:
+        """Return ``logcat -d -t since``. The buffer is not cleared.
+
+        ``since`` is ``MM-DD HH:MM:SS.mmm``. Raises ``AdbError`` on failure.
+        """
+        args = ["-s", serial, "logcat", "-d", "-t", since]
         result = self._run(args)
         if result.returncode != 0:
             raise AdbError(_failure_message(args, result))

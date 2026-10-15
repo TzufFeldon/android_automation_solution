@@ -33,16 +33,38 @@ class ScriptedClient:
             return CommandResult(1, "", "not found")
         if args == ("echo", "hello"):
             return CommandResult(0, "hello\n", "")
+        if args == ("df", "-k", "/data"):
+            return CommandResult(
+                0,
+                "Filesystem 1K-blocks Used Available Use% Mounted on\n"
+                "/dev/block/data 999999 100 204800 10% /data\n",
+                "",
+            )
+        if args == ("ip", "route", "show", "table", "all"):
+            return CommandResult(0, "default via 10.0.2.2 dev eth0\n", "")
+        if args == ("dumpsys", "power"):
+            return CommandResult(0, "  mWakefulness=Awake\n", "")
         if args[:2] == ("pm", "path"):
             return CommandResult(0, f"package:{_PACKAGE}\n", "")
+        if args == ("dumpsys", "activity", "activities"):
+            return CommandResult(
+                0,
+                "  topResumedActivity=ActivityRecord{abc u0 "
+                "com.android.settings/.Settings t7}\n",
+                "",
+            )
         raise AssertionError(args)
 
     def launch_package(self, serial: str, package_name: str) -> CommandResult:
         self.calls.append(("launch", serial, package_name))
         return CommandResult(0, "Events injected: 1\n", "")
 
-    def logcat(self, serial: str) -> str:
-        self.calls.append(("logcat", serial))
+    def device_log_time(self, serial: str) -> str | None:
+        self.calls.append(("device_log_time", serial))
+        return "10-15 14:05:00.000"
+
+    def logcat(self, serial: str, since: str | None = None) -> str:
+        self.calls.append(("logcat", serial, since))
         return "captured\n"
 
 
@@ -51,6 +73,7 @@ def _write_config(directory: Path, **overrides: object) -> Path:
         "package_name": _PACKAGE,
         "minimum_android_version": 10,
         "minimum_battery": 20,
+        "minimum_free_storage_mb": 100,
     }
     payload.update(overrides)
     path = directory / "config.json"
@@ -190,12 +213,15 @@ def test_passing_run_exits_0_and_writes_the_report(
     code = main(_argv(config, tmp_path))
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    payload = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert code == 0
     assert client.device_id == "emulator-5554"
     assert "Overall: PASS" in report
     assert "Device ID: emulator-5554" in report
-    assert "Passed: 5" in report
+    assert "Passed: 9" in report
     assert "Failed: 0" in report
+    assert payload["overall"] == "PASS"
+    assert payload["totals"]["passed"] == 9
     assert not (tmp_path / "logs").exists()
 
 
@@ -275,10 +301,28 @@ def test_terminal_choice_is_the_device_checked_in_that_run(
             return subprocess.CompletedProcess(args, 0, "Google\n", "")
         if args[4:6] == ["dumpsys", "battery"]:
             return subprocess.CompletedProcess(args, 0, "  level: 86\n  scale: 100\n", "")
+        if len(args) >= 6 and args[4] == "date":
+            return subprocess.CompletedProcess(args, 0, "10-15 14:05:00\n", "")
         if args[4:6] == ["echo", "hello"]:
             return subprocess.CompletedProcess(args, 0, "hello\n", "")
+        if args[4:7] == ["df", "-k", "/data"]:
+            stdout = (
+                "Filesystem 1K-blocks Used Available Use% Mounted on\n"
+                "/dev/block/data 999999 100 204800 10% /data\n"
+            )
+            return subprocess.CompletedProcess(args, 0, stdout, "")
+        if args[4:9] == ["ip", "route", "show", "table", "all"]:
+            return subprocess.CompletedProcess(args, 0, "default via 10.0.2.2 dev eth0\n", "")
+        if args[4:6] == ["dumpsys", "power"]:
+            return subprocess.CompletedProcess(args, 0, "  mWakefulness=Awake\n", "")
         if args[4:6] == ["pm", "path"]:
             return subprocess.CompletedProcess(args, 0, f"package:{_PACKAGE}\n", "")
+        if args[4:7] == ["dumpsys", "activity", "activities"]:
+            stdout = (
+                "  topResumedActivity=ActivityRecord{abc u0 "
+                "com.android.settings/.Settings t7}\n"
+            )
+            return subprocess.CompletedProcess(args, 0, stdout, "")
         if args[4] == "monkey":
             return subprocess.CompletedProcess(args, 0, "Events injected: 1\n", "")
         raise AssertionError(args)
@@ -441,6 +485,7 @@ def test_interrupt_before_the_first_report_exits_2(
     assert captured.err == "Stopped before a report was written.\n"
     assert "Traceback" not in captured.err
     assert not (tmp_path / "report.txt").exists()
+    assert not (tmp_path / "report.json").exists()
 
 
 def test_interval_stops_when_a_later_pass_cannot_start(
