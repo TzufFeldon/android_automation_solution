@@ -96,11 +96,16 @@ def _battery(config: AppConfig, info: DeviceInfo) -> CheckResult:
     level = info.battery_percent
     if level is None:
         return _fail(_BATTERY, "Battery level could not be read.")
-    if level >= minimum:
+    if level > minimum:
         return _pass(
             _BATTERY,
-            f"Battery level is {level}%, which is greater than or equal "
-            f"to {minimum}%.",
+            f"Battery level is {level}%, which is greater than {minimum}%.",
+        )
+    if level == minimum:
+        return _fail(
+            _BATTERY,
+            f"Battery level is {level}%, which is equal to {minimum}% "
+            "and must be above it.",
         )
     return _fail(
         _BATTERY,

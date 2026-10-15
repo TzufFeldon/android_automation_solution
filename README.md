@@ -37,7 +37,7 @@ Edit `config.json` before running:
 | --- | --- |
 | `package_name` | Package name, for example `com.android.settings`. |
 | `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as major version 8. |
-| `minimum_battery` | Integer from 0 through 100. The level must be greater than or equal to this value. A level of `100` passes a threshold of `100`. |
+| `minimum_battery` | Integer from 0 through 100. The level must be greater than this value. A level equal to the threshold fails, including `100` against a threshold of `100`. |
 | `device_id` | Optional serial. Omit it, or set `null` or `""`, when only one device is ready. |
 
 A float such as `10.0` and JSON `true` are rejected. `device_id` with leading or trailing spaces is rejected.
@@ -108,7 +108,7 @@ logs/                   Failure logs from a run
 - ADB commands are argument lists. `shell=True` is not used.
 - Configuration is validated before any ADB call.
 - Device selection does not prompt.
-- The battery level must be greater than or equal to `minimum_battery`.
+- The battery level must be greater than `minimum_battery`.
 - Version and battery checks reuse values already collected.
 - A failed log capture leaves the check as `FAIL`.
 

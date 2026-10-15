@@ -195,11 +195,11 @@ def test_version_check(
     ("level", "minimum", "status"),
     [
         (21, 20, Status.PASS),
-        (20, 20, Status.PASS),
+        (20, 20, Status.FAIL),
         (15, 20, Status.FAIL),
-        (100, 100, Status.PASS),
+        (100, 100, Status.FAIL),
         (99, 100, Status.FAIL),
-        (0, 0, Status.PASS),
+        (0, 0, Status.FAIL),
         (1, 0, Status.PASS),
         (None, 20, Status.FAIL),
     ],
@@ -221,12 +221,19 @@ def test_battery_threshold(
     assert battery.status is status
     if level is None:
         assert battery.explanation == "Battery level could not be read."
+    elif level == minimum:
+        assert battery.explanation == (
+            f"Battery level is {level}%, which is equal to {minimum}% "
+            "and must be above it."
+        )
     elif status is Status.FAIL:
         assert battery.explanation == (
             f"Battery level is {level}%, which is lower than {minimum}%."
         )
     else:
-        assert "greater than or equal" in battery.explanation
+        assert battery.explanation == (
+            f"Battery level is {level}%, which is greater than {minimum}%."
+        )
     if status is Status.FAIL:
         assert battery.log_path is not None
     else:
