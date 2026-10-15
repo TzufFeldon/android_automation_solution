@@ -1,6 +1,6 @@
 {
   "package_name": "com.android.settings",
   "minimum_android_version": 10,
-  "minimum_battery": 30,
+  "minimum_battery": 20,
   "interval_seconds": 120
 }
