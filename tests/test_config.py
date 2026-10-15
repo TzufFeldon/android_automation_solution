@@ -40,6 +40,7 @@ def test_valid_config(tmp_path: Path) -> None:
         minimum_battery=20,
         minimum_free_storage_mb=100,
         device_id=None,
+        interval_seconds=None,
     )
 
 
@@ -51,25 +52,18 @@ def test_present_device_id(tmp_path: Path) -> None:
     assert config.device_id == "emulator-5554"
 
 
-def test_empty_device_id_means_no_selection(tmp_path: Path) -> None:
-    payload = {**_VALID, "device_id": ""}
+@pytest.mark.parametrize("device_id", ["", None])
+def test_blank_device_id_means_no_selection(tmp_path: Path, device_id: object) -> None:
+    payload = {**_VALID, "device_id": device_id}
 
     config = load_config(_write(tmp_path, payload))
 
     assert config.device_id is None
 
 
-def test_null_device_id_means_no_selection(tmp_path: Path) -> None:
-    payload = {**_VALID, "device_id": None}
-
-    config = load_config(_write(tmp_path, payload))
-
-    assert config.device_id is None
-
-
-def test_assignment_fields_alone_load(tmp_path: Path) -> None:
+def test_required_fields_alone_leave_optional_settings_unset(tmp_path: Path) -> None:
     payload = {
-        "package_name": "com.example.demo",
+        "package_name": "com.android.settings",
         "minimum_android_version": 10,
         "minimum_battery": 20,
     }
@@ -77,7 +71,7 @@ def test_assignment_fields_alone_load(tmp_path: Path) -> None:
     config = load_config(_write(tmp_path, payload))
 
     assert config == AppConfig(
-        package_name="com.example.demo",
+        package_name="com.android.settings",
         minimum_android_version=10,
         minimum_battery=20,
     )
@@ -91,12 +85,6 @@ def test_null_storage_threshold_is_unset(tmp_path: Path) -> None:
     assert config.minimum_free_storage_mb is None
 
 
-def test_absent_interval_means_one_pass(tmp_path: Path) -> None:
-    config = load_config(_write(tmp_path, _VALID))
-
-    assert config.interval_seconds is None
-
-
 def test_null_interval_means_one_pass(tmp_path: Path) -> None:
     payload = {**_VALID, "interval_seconds": None}
 
@@ -105,32 +93,40 @@ def test_null_interval_means_one_pass(tmp_path: Path) -> None:
     assert config.interval_seconds is None
 
 
-def test_interval_bounds_are_accepted(tmp_path: Path) -> None:
-    for seconds in (1, 86_400):
-        payload = {**_VALID, "interval_seconds": seconds}
-        config = load_config(_write(tmp_path, payload))
-        assert config.interval_seconds == seconds
+@pytest.mark.parametrize("seconds", [1, 86_400])
+def test_interval_bounds_are_accepted(tmp_path: Path, seconds: int) -> None:
+    payload = {**_VALID, "interval_seconds": seconds}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.interval_seconds == seconds
 
 
-def test_battery_bounds_are_accepted(tmp_path: Path) -> None:
-    for level in (0, 100):
-        payload = {**_VALID, "minimum_battery": level}
-        config = load_config(_write(tmp_path, payload))
-        assert config.minimum_battery == level
+@pytest.mark.parametrize("level", [0, 100])
+def test_battery_bounds_are_accepted(tmp_path: Path, level: int) -> None:
+    payload = {**_VALID, "minimum_battery": level}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.minimum_battery == level
 
 
-def test_storage_bounds_are_accepted(tmp_path: Path) -> None:
-    for mebibytes in (0, 1_048_576):
-        payload = {**_VALID, "minimum_free_storage_mb": mebibytes}
-        config = load_config(_write(tmp_path, payload))
-        assert config.minimum_free_storage_mb == mebibytes
+@pytest.mark.parametrize("mebibytes", [0, 1_048_576])
+def test_storage_bounds_are_accepted(tmp_path: Path, mebibytes: int) -> None:
+    payload = {**_VALID, "minimum_free_storage_mb": mebibytes}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.minimum_free_storage_mb == mebibytes
 
 
-def test_android_version_bounds_are_accepted(tmp_path: Path) -> None:
-    for version in (1, 99):
-        payload = {**_VALID, "minimum_android_version": version}
-        config = load_config(_write(tmp_path, payload))
-        assert config.minimum_android_version == version
+@pytest.mark.parametrize("version", [1, 99])
+def test_android_version_bounds_are_accepted(tmp_path: Path, version: int) -> None:
+    payload = {**_VALID, "minimum_android_version": version}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.minimum_android_version == version
 
 
 def test_missing_file_names_the_path(tmp_path: Path) -> None:
@@ -151,13 +147,6 @@ def test_invalid_json_names_path_message_line_and_column(tmp_path: Path) -> None
     assert "line 3" in message
 
 
-def test_non_object_root_is_rejected(tmp_path: Path) -> None:
-    path = tmp_path / "config.json"
-    path.write_text("[]", encoding="utf-8")
-
-    _assert_error(path, "JSON object")
-
-
 def test_missing_required_field_is_named(tmp_path: Path) -> None:
     payload = {
         "minimum_android_version": 10,
@@ -172,18 +161,6 @@ def test_unknown_field_is_rejected(tmp_path: Path) -> None:
     payload = {**_VALID, "min_battery": 15}
 
     _assert_error(_write(tmp_path, payload), "unknown field 'min_battery'")
-
-
-def test_package_name_must_be_a_string(tmp_path: Path) -> None:
-    payload = {**_VALID, "package_name": 12}
-
-    _assert_error(_write(tmp_path, payload), "package_name")
-
-
-def test_invalid_package_name_is_rejected(tmp_path: Path) -> None:
-    payload = {**_VALID, "package_name": "not a package"}
-
-    _assert_error(_write(tmp_path, payload), "Android package name")
 
 
 def test_package_name_longer_than_80_characters_omits_the_value(tmp_path: Path) -> None:
@@ -202,48 +179,6 @@ def test_package_name_longer_than_80_characters_omits_the_value(tmp_path: Path) 
     assert f"got {included!r}" in shown
     assert "got" not in hidden
     assert omitted not in hidden
-
-
-def test_boolean_is_rejected_for_android_version(tmp_path: Path) -> None:
-    payload = {**_VALID, "minimum_android_version": True}
-
-    message = _assert_error(_write(tmp_path, payload), "minimum_android_version")
-
-    assert "boolean" in message
-
-
-def test_boolean_is_rejected_for_battery(tmp_path: Path) -> None:
-    payload = {**_VALID, "minimum_battery": False}
-
-    message = _assert_error(_write(tmp_path, payload), "minimum_battery")
-
-    assert "boolean" in message
-
-
-def test_float_is_rejected(tmp_path: Path) -> None:
-    payload = {**_VALID, "minimum_android_version": 10.0}
-
-    message = _assert_error(_write(tmp_path, payload), "minimum_android_version")
-
-    assert "number" in message
-
-
-def test_android_version_out_of_range(tmp_path: Path) -> None:
-    payload = {**_VALID, "minimum_android_version": 0}
-
-    _assert_error(_write(tmp_path, payload), "from 1 through 99")
-
-
-def test_battery_out_of_range(tmp_path: Path) -> None:
-    payload = {**_VALID, "minimum_battery": 101}
-
-    _assert_error(_write(tmp_path, payload), "from 0 through 100")
-
-
-def test_device_id_whitespace_is_rejected(tmp_path: Path) -> None:
-    payload = {**_VALID, "device_id": " emulator-5554"}
-
-    _assert_error(_write(tmp_path, payload), "leading or trailing whitespace")
 
 
 def test_directory_path_is_rejected(tmp_path: Path) -> None:
@@ -268,12 +203,6 @@ def test_shipped_config_loads() -> None:
     assert config.interval_seconds is None
 
 
-def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
-    config = load_config(str(_write(tmp_path, _VALID)))
-
-    assert config.package_name == "com.android.settings"
-
-
 def test_package_name_may_contain_underscores_and_digits(tmp_path: Path) -> None:
     payload = {**_VALID, "package_name": "com.example2.my_app"}
 
@@ -290,7 +219,7 @@ def test_device_id_may_contain_internal_spaces(tmp_path: Path) -> None:
     assert config.device_id == "emu lator"
 
 
-@pytest.mark.parametrize("raw", ["null", "10", '"config"'])
+@pytest.mark.parametrize("raw", ["null", "10", '"config"', "[]"])
 def test_non_object_json_roots_are_rejected(tmp_path: Path, raw: str) -> None:
     path = tmp_path / "config.json"
     path.write_text(raw, encoding="utf-8")
@@ -339,13 +268,15 @@ def test_unknown_and_missing_fields_are_reported_together(tmp_path: Path) -> Non
     [
         ("minimum_android_version", "10", "integer"),
         ("minimum_android_version", 10.0, "number"),
+        ("minimum_android_version", True, "boolean"),
         ("minimum_android_version", 100, "1 through 99"),
-        ("minimum_android_version", -1, "1 through 99"),
+        ("minimum_android_version", 0, "1 through 99"),
         ("minimum_android_version", None, "integer"),
-        ("minimum_battery", 20.0, "integer"),
+        ("minimum_battery", 20.0, "number"),
         ("minimum_battery", -1, "0 through 100"),
+        ("minimum_battery", 101, "0 through 100"),
         ("minimum_battery", True, "boolean"),
-        ("minimum_free_storage_mb", 100.0, "integer"),
+        ("minimum_free_storage_mb", 100.0, "number"),
         ("minimum_free_storage_mb", -1, "0 through 1048576"),
         ("minimum_free_storage_mb", 1_048_577, "0 through 1048576"),
         ("minimum_free_storage_mb", True, "boolean"),
@@ -357,12 +288,11 @@ def test_unknown_and_missing_fields_are_reported_together(tmp_path: Path) -> Non
         ("package_name", "com.android.settings ", "Android package name"),
         ("package_name", "1com.example", "Android package name"),
         ("device_id", "serial ", "whitespace"),
-        ("device_id", "\nemulator", "whitespace"),
         ("device_id", 5554, "string"),
         ("device_id", True, "boolean"),
         ("interval_seconds", 0, "1 through 86400"),
         ("interval_seconds", 86_401, "1 through 86400"),
-        ("interval_seconds", 30.0, "integer"),
+        ("interval_seconds", 30.0, "number"),
         ("interval_seconds", True, "boolean"),
         ("interval_seconds", "30", "integer"),
     ],

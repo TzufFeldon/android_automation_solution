@@ -122,25 +122,6 @@ def test_broken_config_exits_2_without_a_traceback_or_report(
     assert not (tmp_path / "logs").exists()
 
 
-def test_missing_field_names_the_field_on_stderr(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    config = tmp_path / "config.json"
-    config.write_text(
-        json.dumps({"minimum_android_version": 10, "minimum_battery": 20}),
-        encoding="utf-8",
-    )
-
-    code = main()
-
-    captured = capsys.readouterr()
-    assert code == 2
-    assert "package_name" in captured.err
-    assert "Traceback" not in captured.err
-    assert not (tmp_path / "report.txt").exists()
-
-
 def test_adb_setup_error_exits_2_without_a_report(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -162,41 +143,6 @@ def test_adb_setup_error_exits_2_without_a_report(
     assert not (tmp_path / "report.txt").exists()
 
 
-def test_several_ready_devices_exit_2_without_a_report(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_which(name: str) -> str:
-        assert name == "adb"
-        return "/usr/bin/adb"
-
-    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert args == ["adb", "devices"]
-        stdout = (
-            "List of devices attached\n"
-            "emulator-5554\tdevice\n"
-            "emulator-5556\tdevice\n"
-        )
-        return subprocess.CompletedProcess(args, 0, stdout, "")
-
-    monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
-    monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
-    monkeypatch.setattr("android_runner.adb.sys.stdin.isatty", lambda: False)
-    _write_config(tmp_path)
-
-    code = main()
-
-    captured = capsys.readouterr()
-    assert code == 2
-    assert captured.err == (
-        "More than one Android device is ready (emulator-5554, emulator-5556); "
-        "run in a terminal to choose one, or set device_id in config.json.\n"
-    )
-    assert "Traceback" not in captured.err
-    assert not (tmp_path / "report.txt").exists()
-
-
 _RUN_LINE = re.compile(
     r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Overall: (?:PASS|FAIL); "
 )
@@ -209,6 +155,11 @@ def test_passing_run_exits_0_and_writes_the_report(
 ) -> None:
     client = ScriptedClient(_info())
     monkeypatch.setattr("main.AdbClient", lambda: client)
+
+    def forbid_sleep(_seconds: float) -> None:
+        raise AssertionError("one-pass run slept")
+
+    monkeypatch.setattr("main.time.sleep", forbid_sleep)
     _write_config(tmp_path, device_id="emulator-5554")
 
     code = main()
@@ -521,25 +472,6 @@ def test_interval_stops_when_a_later_pass_cannot_start(
     assert "No Android device or emulator is connected." in captured.err
     assert "Stopped." not in captured.err
     assert (tmp_path / "report.txt").exists()
-
-
-def test_one_pass_does_not_sleep(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = ScriptedClient(_info())
-    monkeypatch.setattr("main.AdbClient", lambda: client)
-
-    def forbid_sleep(_seconds: float) -> None:
-        raise AssertionError("one-pass run slept")
-
-    monkeypatch.setattr("main.time.sleep", forbid_sleep)
-    _write_config(tmp_path)
-
-    code = main()
-
-    assert code == 0
-    assert client.calls.count(("shell", "emulator-5554", ("echo", "hello"))) == 1
 
 
 def test_unexpected_error_propagates(

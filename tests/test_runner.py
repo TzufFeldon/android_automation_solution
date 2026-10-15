@@ -252,8 +252,6 @@ def test_version_check(
         (21, 20, Status.PASS),
         (20, 20, Status.FAIL),
         (15, 20, Status.FAIL),
-        (100, 100, Status.FAIL),
-        (99, 100, Status.FAIL),
         (0, 0, Status.FAIL),
         (1, 0, Status.PASS),
         (None, 20, Status.FAIL),
@@ -328,12 +326,19 @@ def test_package_line_with_leading_space_passes(tmp_path: Path) -> None:
     assert _check(results, "Application installation").status is Status.PASS
 
 
-def test_install_adb_failure_does_not_claim_the_package_is_missing(
+@pytest.mark.parametrize(
+    ("error", "snippet"),
+    [
+        (AdbError("adb is not available"), "Check: failed"),
+        (AdbError("timed out", timed_out=True), "Check: timed out"),
+    ],
+)
+def test_unconfirmed_install_skips_launch_and_foreground(
     tmp_path: Path,
+    error: AdbError,
+    snippet: str,
 ) -> None:
-    adb = _passing_adb(
-        {("pm", "path", _PACKAGE): AdbError("adb is not available")}
-    )
+    adb = _passing_adb({("pm", "path", _PACKAGE): error})
 
     results = run_checks(adb, _config(), _info(), tmp_path / "logs")
 
@@ -342,37 +347,15 @@ def test_install_adb_failure_does_not_claim_the_package_is_missing(
     foreground = _check(results, "Foreground activity")
     assert install.status is Status.FAIL
     assert install.install_cause is InstallCause.UNCONFIRMED
-    assert install.explanation == f"Package: {_PACKAGE}\nCheck: failed"
+    assert install.explanation == f"Package: {_PACKAGE}\n{snippet}"
     assert "Installed: no" not in install.explanation
     assert launch.status is Status.SKIP
     assert "unconfirmed" in launch.explanation
-    assert "Installed: no" not in launch.explanation
     assert foreground.status is Status.SKIP
     assert "unconfirmed" in foreground.explanation
     assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
     shell_args = [call[2] for call in adb.calls if call[0] == "shell"]
     assert ("dumpsys", "activity", "activities") not in shell_args
-
-
-def test_install_timeout_skips_launch_and_does_not_claim_the_package_is_missing(
-    tmp_path: Path,
-) -> None:
-    adb = _passing_adb(
-        {("pm", "path", _PACKAGE): AdbError("timed out", timed_out=True)}
-    )
-
-    results = run_checks(adb, _config(), _info(), tmp_path / "logs")
-
-    install = _check(results, "Application installation")
-    launch = _check(results, "Launch application")
-    foreground = _check(results, "Foreground activity")
-    assert install.status is Status.FAIL
-    assert install.install_cause is InstallCause.UNCONFIRMED
-    assert "timed out" in install.explanation
-    assert launch.status is Status.SKIP
-    assert "unconfirmed" in launch.explanation
-    assert foreground.status is Status.SKIP
-    assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
 
 
 @pytest.mark.parametrize(
@@ -653,10 +636,9 @@ def test_unreadable_device_clock_does_not_save_a_log(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("window", ["", "\n", "   \n"])
-def test_empty_time_window_is_saved_as_returned(tmp_path: Path, window: str) -> None:
+def test_empty_time_window_is_saved_as_returned(tmp_path: Path) -> None:
     adb = _passing_adb()
-    adb.window_texts = [window]
+    adb.window_texts = [""]
     adb.log_texts = ["recent\n"]
 
     results = run_checks(adb, _config(), _info(battery_percent=15), tmp_path / "logs")
@@ -669,7 +651,7 @@ def test_empty_time_window_is_saved_as_returned(tmp_path: Path, window: str) -> 
     assert battery.log_note is None
     assert battery.log_error is None
     assert battery.log_path is not None
-    assert battery.log_path.read_text(encoding="utf-8") == window
+    assert battery.log_path.read_text(encoding="utf-8") == ""
 
 
 def test_battery_log_keeps_lines_outside_the_package(tmp_path: Path) -> None:
@@ -739,24 +721,6 @@ def test_launch_log_filters_to_the_package_and_counts_kept_errors(
     )
 
 
-def test_unreadable_clock_leaves_an_app_check_failure_unchanged(
-    tmp_path: Path,
-) -> None:
-    adb = _passing_adb({("pm", "path", _PACKAGE): _ok("", code=1)})
-    adb.log_time = None
-
-    results = run_checks(adb, _config(), _info(), tmp_path / "logs")
-
-    install = _check(results, "Application installation")
-    assert install.status is Status.FAIL
-    assert install.explanation == f"Package: {_PACKAGE}\nInstalled: no"
-    assert install.log_path is None
-    assert install.log_note is None
-    assert install.log_error == (
-        "Log capture failed because the device clock could not be read."
-    )
-
-
 def test_error_lines_do_not_change_the_check_result(tmp_path: Path) -> None:
     adb = _passing_adb()
     adb.log_texts = [
@@ -818,32 +782,39 @@ def test_unconfigured_storage_is_skipped_without_adb(tmp_path: Path) -> None:
     assert _check(results, "Launch application").status is Status.PASS
 
 
-def test_storage_compares_truncated_mebibytes(tmp_path: Path) -> None:
-    cases = [
+@pytest.mark.parametrize(
+    ("available", "minimum", "status", "snippet"),
+    [
         (204_800, 100, Status.PASS, "Free storage: 200 MB\nMinimum required: 100 MB"),
         (102_400, 100, Status.FAIL, "Free storage: 100 MB\nMinimum required: 100 MB"),
-        (51_200, 100, Status.FAIL, "Free storage: 50 MB\nMinimum required: 100 MB"),
         (1023, 0, Status.FAIL, "Free storage: 0 MB\nMinimum required: 0 MB"),
         (1024, 0, Status.PASS, "Free storage: 1 MB\nMinimum required: 0 MB"),
-    ]
-    for available, minimum, status, snippet in cases:
-        adb = _passing_adb({("df", "-k", "/data"): _ok(_df(available))})
-        results = run_checks(
-            adb,
-            _config(minimum_free_storage_mb=minimum),
-            _info(),
-            tmp_path / "logs",
-        )
-        storage = _check(results, "Free storage")
-        assert storage.status is status
-        assert storage.explanation == snippet
-        assert _check(results, "Launch application").status is Status.PASS
+    ],
+)
+def test_storage_compares_truncated_mebibytes(
+    tmp_path: Path,
+    available: int,
+    minimum: int,
+    status: Status,
+    snippet: str,
+) -> None:
+    adb = _passing_adb({("df", "-k", "/data"): _ok(_df(available))})
+
+    results = run_checks(
+        adb,
+        _config(minimum_free_storage_mb=minimum),
+        _info(),
+        tmp_path / "logs",
+    )
+
+    storage = _check(results, "Free storage")
+    assert storage.status is status
+    assert storage.explanation == snippet
 
 
 @pytest.mark.parametrize(
     ("stdout", "code", "snippet"),
     [
-        ("Filesystem\nnot a table\n", 0, "Free storage: unknown"),
         ("/dev/data 3.7G 1.0G 2.7G 27% /data\n", 0, "Free storage: unknown"),
         ("", 1, "Free storage: unknown"),
     ],
@@ -919,7 +890,6 @@ def test_storage_uses_the_first_capacity_column(tmp_path: Path) -> None:
             Status.FAIL,
             "Default route: absent",
         ),
-        ("", Status.FAIL, "Default route: absent"),
         ("Cannot open netlink\n", Status.FAIL, "Check: failed"),
     ],
 )

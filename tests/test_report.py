@@ -122,12 +122,6 @@ def test_sample_report_matches_the_fixed_layout() -> None:
     text = render_report(_info(), _sample_results(), ran_at=_RAN_AT)
 
     assert text == _SAMPLE
-    assert text.count("Device ID:") == 1
-    assert "Passed: 2" in text
-    assert "Failed: 2" in text
-    assert "Skipped: 1" in text
-    assert "All: 5" in text
-    assert text.endswith("Overall: FAIL\n")
 
 
 def test_overall_pass_when_nothing_failed_including_a_skip() -> None:
@@ -243,7 +237,8 @@ def test_write_report_overwrites_and_creates_parent_directories(tmp_path: Path) 
 
 
 def test_json_report_matches_the_text_totals_and_log_paths() -> None:
-    payload = json.loads(render_json(_info(), _sample_results(), ran_at=_RAN_AT))
+    text = render_json(_info(), _sample_results(), ran_at=_RAN_AT)
+    payload = json.loads(text)
 
     assert payload["ran_at"] == "2026-10-15 14:33:07"
     assert payload["device"] == {
@@ -267,7 +262,7 @@ def test_json_report_matches_the_text_totals_and_log_paths() -> None:
     assert payload["checks"][0]["log_path"] is None
     assert payload["totals"] == {"passed": 2, "failed": 2, "skipped": 1, "all": 5}
     assert payload["overall"] == "FAIL"
-    assert render_json(_info(), _sample_results()).endswith("\n")
+    assert text.endswith("\n")
 
 
 def test_json_keeps_null_fields_a_zero_battery_and_log_details() -> None:

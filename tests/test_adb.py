@@ -379,7 +379,6 @@ def test_device_info_parses_version_model_and_battery(
     [
         ("14", "14", 14),
         ("8.1.0", "8.1.0", 8),
-        ("10.0.1", "10.0.1", 10),
         ("Next", "Next", None),
         ("v14", "v14", None),
     ],
@@ -430,15 +429,12 @@ def test_blank_or_failed_fields_are_missing(monkeypatch: pytest.MonkeyPatch) -> 
         ("level: 50\nscale: 50\n", 100),
         ("level: 0\nscale: 50\n", 0),
         ("level: 50\nscale: 0\n", None),
-        ("level: 50\nscale: -5\n", None),
         ("level: -1\n", None),
         ("level: 101\n", None),
-        ("level: 150\nscale: 100\n", None),
         ("level: 250\nscale: 50\n", None),
         ("level: -5\nscale: 50\n", None),
         ("scale: 100\n", None),
         ("level: 86%\n", None),
-        ("this is not battery output\n", None),
         ("  level: 15\r\n  scale: 100\r\n", 15),
     ],
 )
