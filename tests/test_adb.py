@@ -1,5 +1,3 @@
-"""ADB tests. subprocess.run is mocked; no device or adb binary is required."""
-
 from __future__ import annotations
 
 import subprocess

@@ -27,7 +27,7 @@ README.md
 logs/
 ```
 
-`android_runner/__init__.py` is an empty package marker so `android_runner` imports as a package. It is not drawn in the diagram. `pyproject.toml` and `.github/workflows/ci.yml` are also outside the diagram; both are described in section 2. `tests/.gitkeep` and `logs/.gitkeep` keep those directories in git. `.gitignore` ignores generated files inside `logs/` and ignores `report.txt`.
+`android_runner/__init__.py` is the package marker. It is not drawn in the diagram. `pyproject.toml` and `.github/workflows/ci.yml` are also outside the diagram; both are described in section 2. `logs/.gitkeep` keeps that directory in git. `.gitignore` ignores generated files inside `logs/` and ignores `report.txt`.
 
 Every source file, comment, configuration value, report, and document is written in English.
 

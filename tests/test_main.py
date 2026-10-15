@@ -1,5 +1,3 @@
-"""Entry-point tests. ADB is replaced before any device command can run."""
-
 from __future__ import annotations
 
 import json

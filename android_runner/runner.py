@@ -18,7 +18,7 @@ _LAUNCH = "Launch application"
 
 
 class Status(enum.StrEnum):
-    """Result of one check. ``SKIP`` is not a failure."""
+    """Check result. ``SKIP`` is not a failure."""
 
     PASS = "PASS"
     FAIL = "FAIL"
@@ -27,7 +27,7 @@ class Status(enum.StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CheckResult:
-    """One check, plus the logcat file saved when it fails."""
+    """One check, and the log file saved when it fails."""
 
     name: str
     status: Status
@@ -42,12 +42,7 @@ def run_checks(
     info: DeviceInfo,
     logs_dir: Path,
 ) -> list[CheckResult]:
-    """Run the five checks in order.
-
-    Version and battery use ``info`` and do not call ADB again. A failure
-    inside one check does not stop the later checks. ``monkey`` is not run
-    when the package is not installed.
-    """
+    """Run the five checks in order. Version and battery reuse ``info``."""
     reachable = _with_log(adb, info.serial, logs_dir, _reachable(adb, info))
     version = _with_log(adb, info.serial, logs_dir, _version(config, info))
     battery = _with_log(adb, info.serial, logs_dir, _battery(config, info))
@@ -135,7 +130,8 @@ def _launch(
 ) -> CheckResult:
     package_name = config.package_name
     if install.status is Status.FAIL:
-        if install.explanation == f"Package {package_name} is not installed.":
+        missing = install.explanation == f"Package {package_name} is not installed."
+        if missing:
             explanation = f"Skipped because {package_name} is not installed."
         else:
             explanation = (

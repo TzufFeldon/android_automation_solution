@@ -13,12 +13,7 @@ from android_runner.runner import Status, run_checks
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one pass and return 0, 1, or 2.
-
-    Configuration is loaded before any ADB call. Setup failures print one
-    sentence to stderr and do not write the report. Any other exception
-    propagates.
-    """
+    """Run one pass and return 0, 1, or 2."""
     args = _parse_args(argv)
     try:
         config = load_config(args.config)

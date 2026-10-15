@@ -1,5 +1,3 @@
-"""Configuration loading tests. These tests do not call ADB."""
-
 from __future__ import annotations
 
 import json

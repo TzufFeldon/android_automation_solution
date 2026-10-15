@@ -1,5 +1,3 @@
-"""Check tests. AdbClient is replaced by a fake; ADB is not executed."""
-
 from __future__ import annotations
 
 from datetime import datetime

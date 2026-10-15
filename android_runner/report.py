@@ -9,7 +9,7 @@ from android_runner.runner import CheckResult, Status
 
 
 def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
-    """Return the report text, including a trailing newline."""
+    """Report text, including the trailing newline."""
     passed = sum(result.status is Status.PASS for result in results)
     failed = sum(result.status is Status.FAIL for result in results)
     skipped = sum(result.status is Status.SKIP for result in results)
@@ -52,7 +52,7 @@ def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
 
 
 def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult]) -> None:
-    """Write :func:`render_report` to ``path``, creating parent directories."""
+    """Write the report to ``path``, creating parent directories."""
     report_path = Path(path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(info, results), encoding="utf-8")

@@ -1,8 +1,4 @@
-"""Run ADB and turn its output into device records.
-
-Commands are argument lists with a 20-second timeout. ``shell=True`` is never
-used. This module raises :class:`AdbError` and does not exit the process.
-"""
+"""ADB commands and device selection."""
 
 from __future__ import annotations
 
@@ -23,11 +19,7 @@ _MAJOR_VERSION = re.compile(r"(\d+)")
 
 
 class AdbError(Exception):
-    """ADB is missing, timed out, or could not select a device.
-
-    ``timed_out`` is true when the failure is the 20-second command limit.
-    ``str(error)`` is one sentence.
-    """
+    """ADB failure. ``timed_out`` is set when the command hits the time limit."""
 
     def __init__(self, message: str, *, timed_out: bool = False) -> None:
         super().__init__(message)
@@ -36,7 +28,7 @@ class AdbError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class DeviceRecord:
-    """One row from ``adb devices``."""
+    """One ``adb devices`` row."""
 
     serial: str
     state: str
@@ -44,12 +36,7 @@ class DeviceRecord:
 
 @dataclass(frozen=True, slots=True)
 class DeviceInfo:
-    """Facts collected after a device has been selected.
-
-    Missing strings and an unreadable battery are ``None``. The report shows
-    ``unknown`` for a missing model or manufacturer. A missing version or
-    battery fails the matching check.
-    """
+    """Collected device facts. Unread fields are ``None``."""
 
     serial: str
     android_version: str | None
@@ -61,7 +48,7 @@ class DeviceInfo:
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
-    """Output of one ADB command, including a non-zero exit code."""
+    """Stdout, stderr, and exit code of one ADB command."""
 
     returncode: int
     stdout: str
@@ -69,10 +56,10 @@ class CommandResult:
 
 
 class AdbClient:
-    """Build ADB commands and call ``subprocess.run`` in one place."""
+    """Runs ADB through ``subprocess``."""
 
     def list_devices(self) -> list[DeviceRecord]:
-        """Return every parsed device row, including devices that are not ready."""
+        """Return every parsed device row."""
         args = ["devices"]
         result = self._run(args)
         if result.returncode != 0:
@@ -80,22 +67,14 @@ class AdbClient:
         return _parse_devices(result.stdout)
 
     def select_device(self, device_id: str | None) -> str:
-        """Return the serial to check.
-
-        An empty ``device_id`` means the same thing as ``None``: select the
-        only ready device. Selection never reads from stdin.
-        """
+        """Return the serial to check. ``None`` or ``""`` selects the only ready device."""
         devices = self.list_devices()
         if device_id:
             return _select_named(device_id, devices)
         return _select_only_ready(devices)
 
     def read_device_info(self, serial: str) -> DeviceInfo:
-        """Read version, model, manufacturer, and battery for ``serial``.
-
-        A field that times out, exits non-zero, or comes back blank is stored
-        as missing. The other fields are still read.
-        """
+        """Read version, model, manufacturer, and battery. A failed field stays ``None``."""
         version = self._property(serial, "ro.build.version.release")
         model = self._property(serial, "ro.product.model")
         manufacturer = self._property(serial, "ro.product.manufacturer")
@@ -110,15 +89,11 @@ class AdbClient:
         )
 
     def shell(self, serial: str, *args: str) -> CommandResult:
-        """Run ``adb -s serial shell`` and keep a non-zero exit code.
-
-        Raises:
-            AdbError: ``adb`` is missing or the command times out.
-        """
+        """Run ``adb -s serial shell``. A non-zero exit code is returned, not raised."""
         return self._run(["-s", serial, "shell", *args])
 
     def launch_package(self, serial: str, package_name: str) -> CommandResult:
-        """Start ``package_name`` through ``monkey`` and the launcher category."""
+        """Start ``package_name`` with ``monkey`` and the launcher category."""
         return self.shell(
             serial,
             "monkey",
@@ -130,11 +105,7 @@ class AdbClient:
         )
 
     def logcat(self, serial: str) -> str:
-        """Return the current logcat buffer.
-
-        Raises:
-            AdbError: The command is missing, times out, or exits non-zero.
-        """
+        """Return ``logcat -d`` output. Raises ``AdbError`` on failure."""
         args = ["-s", serial, "logcat", "-d"]
         result = self._run(args)
         if result.returncode != 0:
@@ -253,12 +224,7 @@ def _describe(devices: list[DeviceRecord]) -> str:
 
 
 def _correction(states: set[str]) -> str:
-    """Say how to make the listed states usable.
-
-    Only states that are actually present are mentioned, so an offline device
-    is not told to accept a USB prompt and an unauthorized device is not told
-    to reconnect an offline one.
-    """
+    """How to fix the states that are actually connected."""
     hints: list[str] = []
     if "unauthorized" in states:
         hints.append("accept the USB debugging prompt on the device")
@@ -274,7 +240,7 @@ def _correction(states: set[str]) -> str:
 
 
 def _major_version(version: str | None) -> int | None:
-    """Return the leading integer of a release string such as ``8.1.0``."""
+    """Leading integer of a release string. ``8.1.0`` is 8."""
     if version is None:
         return None
     match = _MAJOR_VERSION.match(version.strip())
@@ -284,12 +250,7 @@ def _major_version(version: str | None) -> int | None:
 
 
 def _battery_percent(text: str | None) -> int | None:
-    """Read ``level`` and ``scale`` from ``dumpsys battery``.
-
-    A missing scale, or a scale of 100, means the percentage is ``level``.
-    Any other positive scale uses Python ``round`` (half to even). A missing
-    level or a scale of 0 or less is unreadable.
-    """
+    """Percent from ``dumpsys battery``. A missing or 100 ``scale`` uses ``level``."""
     if text is None:
         return None
     level: int | None = None

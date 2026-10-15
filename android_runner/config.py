@@ -1,9 +1,4 @@
-"""Load and validate ``config.json`` before any device or ADB interaction.
-
-This module never launches ADB and never exits the process. ``load_config``
-raises :class:`ConfigError` with one sentence. The entry point prints that
-sentence and chooses the exit code.
-"""
+"""Load and validate ``config.json``."""
 
 from __future__ import annotations
 
@@ -30,16 +25,12 @@ _BATTERY_MAX = 100
 
 
 class ConfigError(Exception):
-    """Configuration is missing or invalid.
-
-    ``str(error)`` is one human-readable sentence and is safe to show to the
-    user. It does not include a traceback.
-    """
+    """Invalid configuration. The message is one sentence."""
 
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    """Validated settings shared by the rest of the application."""
+    """Settings accepted by ``load_config``."""
 
     package_name: str
     minimum_android_version: int
@@ -48,12 +39,7 @@ class AppConfig:
 
 
 def load_config(path: str | Path) -> AppConfig:
-    """Read ``path`` and return validated settings.
-
-    Raises:
-        ConfigError: The file is missing, unreadable, or does not match the
-            configuration schema. The message is a single sentence.
-    """
+    """Read ``path``. Raises ``ConfigError`` when the file is missing or invalid."""
     config_path = Path(path)
     raw_text = _read_text(config_path)
     payload = _parse_json(config_path, raw_text)
@@ -169,10 +155,7 @@ def _require_bounded_int(value: object, field: str, low: int, high: int) -> int:
 
 
 def _optional_device_id(value: object) -> str | None:
-    """Return a serial, or ``None`` when selection is left unset.
-
-    A missing key, JSON ``null``, and ``""`` all mean no explicit device.
-    """
+    """Serial, or ``None`` when the key is missing, null, or ``""``."""
     if value is None:
         return None
     if not isinstance(value, str):
