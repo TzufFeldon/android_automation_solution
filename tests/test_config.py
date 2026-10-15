@@ -193,3 +193,109 @@ def test_shipped_config_loads() -> None:
     assert config.minimum_android_version == 10
     assert config.minimum_battery == 20
     assert config.device_id is None
+
+
+def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
+    config = load_config(str(_write(tmp_path, _VALID)))
+
+    assert config.package_name == "com.example.demo"
+
+
+def test_package_name_may_contain_underscores_and_digits(tmp_path: Path) -> None:
+    payload = {**_VALID, "package_name": "com.example2.my_app"}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.package_name == "com.example2.my_app"
+
+
+def test_device_id_may_contain_internal_spaces(tmp_path: Path) -> None:
+    payload = {**_VALID, "device_id": "emu lator"}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.device_id == "emu lator"
+
+
+@pytest.mark.parametrize("raw", ["null", "10", '"config"'])
+def test_non_object_json_roots_are_rejected(tmp_path: Path, raw: str) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(raw, encoding="utf-8")
+
+    _assert_error(path, "JSON object")
+
+
+def test_utf8_bom_is_rejected_as_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xef\xbb\xbf{}")
+
+    _assert_error(path, "invalid JSON")
+
+
+def test_several_missing_fields_are_all_named(tmp_path: Path) -> None:
+    message = _assert_error(_write(tmp_path, {}), "required fields")
+
+    assert "package_name" in message
+    assert "minimum_android_version" in message
+    assert "minimum_battery" in message
+
+
+def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
+    payload = {**_VALID, "zzz": 1, "aaa": 2}
+
+    message = _assert_error(_write(tmp_path, payload), "unknown fields")
+
+    assert "'aaa'" in message
+    assert "'zzz'" in message
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("minimum_android_version", "10", "integer"),
+        ("minimum_android_version", 10.0, "number"),
+        ("minimum_android_version", 100, "1 through 99"),
+        ("minimum_android_version", -1, "1 through 99"),
+        ("minimum_android_version", None, "integer"),
+        ("minimum_battery", 20.0, "integer"),
+        ("minimum_battery", -1, "0 through 100"),
+        ("minimum_battery", True, "boolean"),
+        ("package_name", None, "string"),
+        ("package_name", "example", "Android package name"),
+        ("package_name", "com.", "Android package name"),
+        ("package_name", ".com.example", "Android package name"),
+        ("package_name", "com..example", "Android package name"),
+        ("package_name", "com.example.demo ", "Android package name"),
+        ("package_name", "1com.example", "Android package name"),
+        ("device_id", "serial ", "whitespace"),
+        ("device_id", "\nemulator", "whitespace"),
+        ("device_id", 5554, "string"),
+        ("device_id", True, "boolean"),
+    ],
+)
+def test_invalid_field_values_are_rejected(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    match: str,
+) -> None:
+    payload = {**_VALID, field: value}
+
+    message = _assert_error(_write(tmp_path, payload), match)
+
+    assert field in message
+
+
+def test_unreadable_file_is_rejected(tmp_path: Path) -> None:
+    path = _write(tmp_path, _VALID)
+    path.chmod(0)
+    try:
+        try:
+            load_config(path)
+        except ConfigError as exc:
+            assert "not readable" in str(exc)
+            assert "Traceback" not in str(exc)
+        else:
+            pytest.skip("this platform still allows the owner to read a mode 000 file")
+    finally:
+        path.chmod(0o644)

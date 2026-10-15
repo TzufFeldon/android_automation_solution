@@ -1,0 +1,197 @@
+"""Entry-point tests. ADB is replaced before any device command can run."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from android_runner.adb import AdbError, CommandResult, DeviceInfo
+from main import main
+
+_PACKAGE = "com.example.demo"
+
+
+class ScriptedClient:
+    def __init__(self, info: DeviceInfo, fail_install: bool = False) -> None:
+        self.info = info
+        self.fail_install = fail_install
+        self.device_id: str | None = None
+        self.calls: list[tuple[object, ...]] = []
+
+    def select_device(self, device_id: str | None) -> str:
+        self.device_id = device_id
+        return self.info.serial
+
+    def read_device_info(self, serial: str) -> DeviceInfo:
+        assert serial == self.info.serial
+        return self.info
+
+    def shell(self, serial: str, *args: str) -> CommandResult:
+        self.calls.append(("shell", serial, args))
+        if args[:2] == ("pm", "path") and self.fail_install:
+            return CommandResult(1, "", "not found")
+        if args == ("echo", "hello"):
+            return CommandResult(0, "hello\n", "")
+        if args[:2] == ("pm", "path"):
+            return CommandResult(0, f"package:{_PACKAGE}\n", "")
+        raise AssertionError(args)
+
+    def launch_package(self, serial: str, package_name: str) -> CommandResult:
+        self.calls.append(("launch", serial, package_name))
+        return CommandResult(0, "Events injected: 1\n", "")
+
+    def logcat(self, serial: str) -> str:
+        self.calls.append(("logcat", serial))
+        return "captured\n"
+
+
+def _write_config(directory: Path, **overrides: object) -> Path:
+    payload: dict[str, object] = {
+        "package_name": _PACKAGE,
+        "minimum_android_version": 10,
+        "minimum_battery": 20,
+    }
+    payload.update(overrides)
+    path = directory / "config.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _info(battery: int = 86) -> DeviceInfo:
+    return DeviceInfo(
+        serial="emulator-5554",
+        android_version="14",
+        android_major=14,
+        model="sdk_gphone64_arm64",
+        manufacturer="Google",
+        battery_percent=battery,
+    )
+
+
+def _argv(config: Path, root: Path) -> list[str]:
+    return [
+        "--config",
+        str(config),
+        "--report",
+        str(root / "report.txt"),
+        "--logs",
+        str(root / "logs"),
+    ]
+
+
+def test_broken_config_exits_2_without_a_traceback_or_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbid_adb() -> None:
+        raise AssertionError("ADB started before configuration was accepted")
+
+    monkeypatch.setattr("main.AdbClient", forbid_adb)
+    config = tmp_path / "config.json"
+    config.write_text("{", encoding="utf-8")
+    report = tmp_path / "report.txt"
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "invalid JSON" in captured.err
+    assert "Traceback" not in captured.err
+    assert "Traceback" not in captured.out
+    assert not report.exists()
+    assert not (tmp_path / "logs").exists()
+
+
+def test_missing_field_names_the_field_on_stderr(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps({"minimum_android_version": 10, "minimum_battery": 20}),
+        encoding="utf-8",
+    )
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "package_name" in captured.err
+    assert "Traceback" not in captured.err
+    assert not (tmp_path / "report.txt").exists()
+
+
+def test_adb_setup_error_exits_2_without_a_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MissingAdb:
+        def select_device(self, _device_id: str | None) -> str:
+            raise AdbError("No Android device or emulator is connected.")
+
+    monkeypatch.setattr("main.AdbClient", MissingAdb)
+    config = _write_config(tmp_path)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "No Android device or emulator is connected." in captured.err
+    assert "Traceback" not in captured.err
+    assert not (tmp_path / "report.txt").exists()
+
+
+def test_passing_run_exits_0_and_writes_the_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info())
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    config = _write_config(tmp_path, device_id="emulator-5554")
+
+    code = main(_argv(config, tmp_path))
+
+    report = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    assert code == 0
+    assert client.device_id == "emulator-5554"
+    assert "Overall: PASS" in report
+    assert "Device ID: emulator-5554" in report
+    assert "Passed: 5" in report
+    assert "Failed: 0" in report
+    assert not (tmp_path / "logs").exists()
+
+
+def test_failing_check_exits_1_and_writes_the_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info(battery=15))
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    config = _write_config(tmp_path)
+
+    code = main(_argv(config, tmp_path))
+
+    report = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    assert code == 1
+    assert "Battery level is 15%, which is not strictly above 20%." in report
+    assert "Overall: FAIL" in report
+    assert list((tmp_path / "logs").glob("*battery_level.txt"))
+
+
+def test_unexpected_error_propagates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Broken:
+        def select_device(self, _device_id: str | None) -> str:
+            raise RuntimeError("bug in device selection")
+
+    monkeypatch.setattr("main.AdbClient", Broken)
+    config = _write_config(tmp_path)
+
+    with pytest.raises(RuntimeError, match="bug in device selection"):
+        main(_argv(config, tmp_path))
