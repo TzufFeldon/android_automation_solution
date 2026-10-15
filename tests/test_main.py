@@ -93,15 +93,9 @@ def _info(battery: int = 86) -> DeviceInfo:
     )
 
 
-def _argv(config: Path, root: Path) -> list[str]:
-    return [
-        "--config",
-        str(config),
-        "--report",
-        str(root / "report.txt"),
-        "--logs",
-        str(root / "logs"),
-    ]
+@pytest.fixture(autouse=True)
+def _run_from_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
 
 
 def test_broken_config_exits_2_without_a_traceback_or_report(
@@ -117,7 +111,7 @@ def test_broken_config_exits_2_without_a_traceback_or_report(
     config.write_text("{", encoding="utf-8")
     report = tmp_path / "report.txt"
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -138,7 +132,7 @@ def test_missing_field_names_the_field_on_stderr(
         encoding="utf-8",
     )
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -157,9 +151,9 @@ def test_adb_setup_error_exits_2_without_a_report(
             raise AdbError("No Android device or emulator is connected.")
 
     monkeypatch.setattr("main.AdbClient", MissingAdb)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -189,9 +183,9 @@ def test_several_ready_devices_exit_2_without_a_report(
     monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
     monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
     monkeypatch.setattr("android_runner.adb.sys.stdin.isatty", lambda: False)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -215,9 +209,9 @@ def test_passing_run_exits_0_and_writes_the_report(
 ) -> None:
     client = ScriptedClient(_info())
     monkeypatch.setattr("main.AdbClient", lambda: client)
-    config = _write_config(tmp_path, device_id="emulator-5554")
+    _write_config(tmp_path, device_id="emulator-5554")
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     payload = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
@@ -242,9 +236,9 @@ def test_failing_check_exits_1_and_writes_the_report(
 ) -> None:
     client = ScriptedClient(_info(battery=15))
     monkeypatch.setattr("main.AdbClient", lambda: client)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 1
@@ -260,24 +254,15 @@ def test_report_directory_exits_2_without_a_traceback(
 ) -> None:
     client = ScriptedClient(_info())
     monkeypatch.setattr("main.AdbClient", lambda: client)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
     report = tmp_path / "report.txt"
     report.mkdir()
 
-    code = main(
-        [
-            "--config",
-            str(config),
-            "--report",
-            str(report),
-            "--logs",
-            str(tmp_path / "logs"),
-        ]
-    )
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
-    assert captured.err == f"Report path is a directory: {report}.\n"
+    assert captured.err == "Report path is a directory: report.txt.\n"
     assert "Traceback" not in captured.err
     assert "Traceback" not in captured.out
 
@@ -348,9 +333,9 @@ def test_terminal_choice_is_the_device_checked_in_that_run(
     monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
     monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
     monkeypatch.setattr("android_runner.adb.sys.stdin", _Stdin())
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
@@ -380,9 +365,9 @@ def test_interval_repeats_until_stopped(
             raise KeyboardInterrupt
 
     monkeypatch.setattr("main.time.sleep", stop_on_second_sleep)
-    config = _write_config(tmp_path, interval_seconds=30)
+    _write_config(tmp_path, interval_seconds=30)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
@@ -423,9 +408,9 @@ def test_interval_keeps_the_last_completed_exit_code(
             raise KeyboardInterrupt
 
     monkeypatch.setattr("main.time.sleep", stop_after_the_failed_pass)
-    config = _write_config(tmp_path, interval_seconds=15)
+    _write_config(tmp_path, interval_seconds=15)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
@@ -473,9 +458,9 @@ def test_interval_reuses_the_serial_chosen_on_the_first_pass(
             raise KeyboardInterrupt
 
     monkeypatch.setattr("main.time.sleep", stop_after_two)
-    config = _write_config(tmp_path, interval_seconds=30)
+    _write_config(tmp_path, interval_seconds=30)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     assert code == 0
     assert client.ids == [None, "emulator-5556"]
@@ -491,9 +476,9 @@ def test_interrupt_before_the_first_report_exits_2(
             raise KeyboardInterrupt
 
     monkeypatch.setattr("main.AdbClient", Interrupted)
-    config = _write_config(tmp_path, interval_seconds=30)
+    _write_config(tmp_path, interval_seconds=30)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -526,9 +511,9 @@ def test_interval_stops_when_a_later_pass_cannot_start(
         return None
 
     monkeypatch.setattr("main.time.sleep", record_sleep)
-    config = _write_config(tmp_path, interval_seconds=30)
+    _write_config(tmp_path, interval_seconds=30)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     captured = capsys.readouterr()
     assert code == 2
@@ -549,9 +534,9 @@ def test_one_pass_does_not_sleep(
         raise AssertionError("one-pass run slept")
 
     monkeypatch.setattr("main.time.sleep", forbid_sleep)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
-    code = main(_argv(config, tmp_path))
+    code = main()
 
     assert code == 0
     assert client.calls.count(("shell", "emulator-5554", ("echo", "hello"))) == 1
@@ -566,7 +551,7 @@ def test_unexpected_error_propagates(
             raise RuntimeError("bug in device selection")
 
     monkeypatch.setattr("main.AdbClient", Broken)
-    config = _write_config(tmp_path)
+    _write_config(tmp_path)
 
     with pytest.raises(RuntimeError, match="bug in device selection"):
-        main(_argv(config, tmp_path))
+        main()

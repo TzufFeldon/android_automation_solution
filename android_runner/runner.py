@@ -539,7 +539,6 @@ def _pass(name: str, explanation: str) -> CheckResult:
 def _fail(
     name: str,
     explanation: str,
-    *,
     install_cause: InstallCause | None = None,
 ) -> CheckResult:
     return CheckResult(

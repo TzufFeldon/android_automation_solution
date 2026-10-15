@@ -65,7 +65,6 @@ def _devices(*rows: str) -> dict[tuple[str, ...], object]:
 
 
 def _info(
-    *,
     version: object = (0, "14\n", ""),
     model: object = (0, "Pixel 7\n", ""),
     manufacturer: object = (0, "Google\n", ""),

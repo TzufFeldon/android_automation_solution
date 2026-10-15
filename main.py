@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 import time
 from datetime import datetime
@@ -13,12 +12,15 @@ from android_runner.config import AppConfig, ConfigError, load_config
 from android_runner.report import ReportError, json_report_path, write_report
 from android_runner.runner import Status, run_checks
 
+_CONFIG_PATH = Path("config.json")
+_REPORT_PATH = Path("report.txt")
+_LOGS_DIR = Path("logs")
 
-def main(argv: list[str] | None = None) -> int:
+
+def main() -> int:
     """Run one pass, or repeat it when ``interval_seconds`` is set. Return 0, 1, or 2."""
-    args = _parse_args(argv)
     try:
-        config = load_config(args.config)
+        config = load_config(_CONFIG_PATH)
     except ConfigError as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -29,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     announce = True
     while True:
         try:
-            code, serial = _run_once(adb, config, args, selected, announce=announce)
+            code, serial = _run_once(adb, config, selected, announce=announce)
         except KeyboardInterrupt:
             return _stop(last_code)
         if code == 2 or config.interval_seconds is None:
@@ -46,9 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 def _run_once(
     adb: AdbClient,
     config: AppConfig,
-    args: argparse.Namespace,
     selected: str | None,
-    *,
     announce: bool,
 ) -> tuple[int, str | None]:
     try:
@@ -60,9 +60,8 @@ def _run_once(
         print(exc, file=sys.stderr)
         return 2, None
 
-    logs_dir = Path(args.logs)
-    results = run_checks(adb, config, info, logs_dir)
-    report_path = Path(args.report)
+    results = run_checks(adb, config, info, _LOGS_DIR)
+    report_path = _REPORT_PATH
     json_path = json_report_path(report_path)
     ran_at = datetime.now()
     try:
@@ -85,28 +84,6 @@ def _stop(last_code: int | None) -> int:
         return 2
     print("Stopped.", file=sys.stderr)
     return last_code
-
-
-def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run Android device checks and write a text report and a JSON report."
-    )
-    parser.add_argument(
-        "--config",
-        default="config.json",
-        help="Path to the JSON configuration file.",
-    )
-    parser.add_argument(
-        "--report",
-        default="report.txt",
-        help="Path of the report file to write.",
-    )
-    parser.add_argument(
-        "--logs",
-        default="logs",
-        help="Directory for logcat files saved after a failed check.",
-    )
-    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

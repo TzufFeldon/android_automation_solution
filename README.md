@@ -14,7 +14,7 @@ Run from the project root. Paths are relative to the current directory. The tool
 
 ## Configuration
 
-Edit `config.json`, or pass another file with `--config`.
+Edit `config.json`.
 
 ```json
 {
@@ -46,7 +46,7 @@ python3 main.py   # macOS
 python main.py    # Windows
 ```
 
-`--config`, `--report`, and `--logs` override `config.json`, `report.txt`, and `logs`. Each pass also writes JSON beside the text file (`report.txt` → `report.json`).
+Each run reads `config.json`, writes `report.txt` and `report.json`, and saves failure logs under `logs/`.
 
 Several ready devices prompt once on a terminal. Without a terminal the run exits 2 and names the serials. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass or during the wait stops after the current pass and keeps the exit code of the last completed report. Ctrl+C before any report exits 2.
 
@@ -95,7 +95,7 @@ android_automation_solution/
 
 | Module                  | Responsibility                                                                                |
 | ----------------------- | --------------------------------------------------------------------------------------------- |
-| `main.py`               | Parse `--config`, `--report`, and `--logs`. Own the exit code and the optional interval loop. |
+| `main.py`               | Own the exit code and the optional interval loop.                                              |
 | `android_runner.config` | Read and validate `config.json` into `AppConfig`.                                             |
 | `android_runner.adb`    | Run ADB, select one serial, and collect device facts.                                         |
 | `android_runner.runner` | Run the checks and attach a failure log.                                                      |
@@ -144,7 +144,7 @@ Assumptions:
 - The configured package is already installed when launch should be attempted. A missing package is `FAIL` for installation and `SKIP` for launch and foreground.
 - The screen, network, and free space are only observed. The tool does not change them.
 - A default route on `dummy0` does not count as connectivity.
-- Paths are relative to the working directory unless an absolute path is passed.
+- Paths are relative to the working directory.
 - A continuous run overwrites `report.txt` and `report.json`. Earlier passes are not kept.
 - Tests mock `subprocess.run`. They do not need a device or an `adb` binary.
 

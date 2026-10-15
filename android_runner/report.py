@@ -30,7 +30,6 @@ def json_report_path(path: str | Path) -> Path:
 def render_report(
     info: DeviceInfo,
     results: list[CheckResult],
-    *,
     ran_at: datetime | None = None,
 ) -> str:
     """Report text, including the trailing newline.
@@ -83,7 +82,6 @@ def render_report(
 def render_json(
     info: DeviceInfo,
     results: list[CheckResult],
-    *,
     ran_at: datetime | None = None,
 ) -> str:
     """JSON report, including the trailing newline.
@@ -131,7 +129,6 @@ def write_report(
     path: str | Path,
     info: DeviceInfo,
     results: list[CheckResult],
-    *,
     ran_at: datetime | None = None,
 ) -> None:
     """Write the text report and the sibling JSON report.
