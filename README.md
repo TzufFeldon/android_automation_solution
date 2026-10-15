@@ -33,7 +33,7 @@ Edit `config.json`.
 | `minimum_battery`         | Integer 0–100. The level must be greater than this value.                                                                       |
 | `minimum_free_storage_mb` | Optional integer 0–1048576. Omit it or set `null` to skip the storage check. Free MiB on `/data` must be greater than this value. |
 | `device_id`               | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a list when several are ready. |
-| `interval_seconds`        | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C stops after the current pass.              |
+| `interval_seconds`        | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C keeps the exit code of the last completed report. |
 
 
 `package_name`, `minimum_android_version`, and `minimum_battery` are required. A file with only those three fields runs one pass and skips the storage check. The shipped file also sets `minimum_free_storage_mb` and does not set `interval_seconds`, so `python3 main.py` checks storage once and exits. Floats, booleans, and unknown keys are rejected. Missing required fields are named in the error. The file is validated before any ADB call.
@@ -47,7 +47,7 @@ python main.py    # Windows
 
 Each run reads `config.json`, writes `report.txt` and `report.json`, and saves failure logs under `logs/`.
 
-Several ready devices prompt once on a terminal. Without a terminal the run exits 2, names the serials, and says to run in a terminal or set `device_id`. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass or during the wait stops after the current pass and keeps the exit code of the last completed report. Ctrl+C before any report exits 2.
+Several ready devices prompt once on a terminal. Without a terminal the run exits 2, names the serials, and says to run in a terminal or set `device_id`. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass aborts that pass and keeps the exit code of the last completed report. Ctrl+C during the wait keeps that same exit code. Ctrl+C before any report exits 2.
 
 ## Checks
 

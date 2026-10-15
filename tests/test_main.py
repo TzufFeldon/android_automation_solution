@@ -14,11 +14,9 @@ _PACKAGE = "com.android.settings"
 
 
 class ScriptedClient:
-    def __init__(self, info: DeviceInfo, fail_install: bool = False) -> None:
+    def __init__(self, info: DeviceInfo) -> None:
         self.info = info
-        self.fail_install = fail_install
         self.device_id: str | None = None
-        self.calls: list[tuple[object, ...]] = []
 
     def select_device(self, device_id: str | None) -> str:
         self.device_id = device_id
@@ -28,10 +26,7 @@ class ScriptedClient:
         assert serial == self.info.serial
         return self.info
 
-    def shell(self, serial: str, *args: str) -> CommandResult:
-        self.calls.append(("shell", serial, args))
-        if args[:2] == ("pm", "path") and self.fail_install:
-            return CommandResult(1, "", "not found")
+    def shell(self, _serial: str, *args: str) -> CommandResult:
         if args == ("echo", "hello"):
             return CommandResult(0, "hello\n", "")
         if args == ("df", "-k", "/data"):
@@ -56,16 +51,13 @@ class ScriptedClient:
             )
         raise AssertionError(args)
 
-    def launch_package(self, serial: str, package_name: str) -> CommandResult:
-        self.calls.append(("launch", serial, package_name))
+    def launch_package(self, _serial: str, _package_name: str) -> CommandResult:
         return CommandResult(0, "Events injected: 1\n", "")
 
-    def device_log_time(self, serial: str) -> str | None:
-        self.calls.append(("device_log_time", serial))
+    def device_log_time(self, _serial: str) -> str | None:
         return "10-15 14:05:00.000"
 
-    def logcat(self, serial: str, since: str | None = None) -> str:
-        self.calls.append(("logcat", serial, since))
+    def logcat(self, _serial: str, _since: str) -> str:
         return "captured\n"
 
 

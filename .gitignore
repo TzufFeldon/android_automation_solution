@@ -23,3 +23,5 @@ htmlcov/
 # Output from a run
 report.txt
 report.json
+logs/*
+!logs/.gitkeep
