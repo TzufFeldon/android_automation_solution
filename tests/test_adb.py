@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import pytest
 
 from android_runner import adb as adb_module
-from android_runner.adb import AdbClient, AdbError, DeviceRecord
+from android_runner.adb import LOGCAT_MAX_LINES, AdbClient, AdbError, DeviceRecord
 
 _SERIAL = "emulator-5554"
 _OTHER = "emulator-5556"
@@ -279,10 +279,18 @@ def test_blank_or_failed_fields_are_missing(monkeypatch: pytest.MonkeyPatch) -> 
     [
         ("level: 40\n", 40),
         ("level: 0\nscale: 100\n", 0),
+        ("level: 100\n", 100),
         ("level: 2\nscale: 3\n", 67),
         ("level: 1\nscale: 8\n", 12),
+        ("level: 50\nscale: 50\n", 100),
+        ("level: 0\nscale: 50\n", 0),
         ("level: 50\nscale: 0\n", None),
         ("level: 50\nscale: -5\n", None),
+        ("level: -1\n", None),
+        ("level: 101\n", None),
+        ("level: 150\nscale: 100\n", None),
+        ("level: 250\nscale: 50\n", None),
+        ("level: -5\nscale: 50\n", None),
         ("scale: 100\n", None),
         ("level: 86%\n", None),
         ("this is not battery output\n", None),
@@ -347,7 +355,7 @@ def test_launch_package_uses_monkey_without_a_shell_string(
 
 
 def test_logcat_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
-    command = ("adb", "-s", _SERIAL, "logcat", "-d")
+    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES))
     client, calls = _client(monkeypatch, {command: (0, "log line\n", "")})
 
     assert client.logcat(_SERIAL) == "log line\n"
@@ -355,7 +363,7 @@ def test_logcat_returns_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_logcat_nonzero_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    command = ("adb", "-s", _SERIAL, "logcat", "-d")
+    command = ("adb", "-s", _SERIAL, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES))
     client, _calls = _client(monkeypatch, {command: (2, "", "busy")})
 
     with pytest.raises(AdbError, match="exit code 2: busy") as caught:

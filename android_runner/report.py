@@ -8,6 +8,10 @@ from android_runner.adb import DeviceInfo
 from android_runner.runner import CheckResult, Status
 
 
+class ReportError(Exception):
+    """The report could not be written. The message is one sentence."""
+
+
 def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
     """Report text, including the trailing newline."""
     passed = sum(result.status is Status.PASS for result in results)
@@ -33,6 +37,8 @@ def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
         lines.append(f"    {result.explanation}")
         if result.log_path is not None:
             lines.append(f"    Log: {result.log_path.as_posix()}")
+        if result.log_note is not None:
+            lines.append(f"    {result.log_note}")
         if result.log_error is not None:
             lines.append(f"    {result.log_error}")
     lines.extend(
@@ -52,10 +58,24 @@ def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
 
 
 def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult]) -> None:
-    """Write the report to ``path``, creating parent directories."""
+    """Write the report to ``path``, creating parent directories.
+
+    Raises ``ReportError`` when the path cannot be written.
+    """
     report_path = Path(path)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(render_report(info, results), encoding="utf-8")
+    text = render_report(info, results)
+    try:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(text, encoding="utf-8")
+    except IsADirectoryError:
+        raise ReportError(f"Report path is a directory: {report_path}.") from None
+    except PermissionError:
+        raise ReportError(f"Report file is not writable: {report_path}.") from None
+    except OSError as exc:
+        detail = exc.strerror or exc.__class__.__name__
+        raise ReportError(
+            f"Report file could not be written: {report_path} ({detail})."
+        ) from None
 
 
 def _text(value: str | None) -> str:

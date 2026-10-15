@@ -15,6 +15,8 @@ _VERSION = "Android version"
 _BATTERY = "Battery level"
 _INSTALL = "Application installation"
 _LAUNCH = "Launch application"
+_LOG_MAX_BYTES = 1_048_576
+_TRUNCATED_LOG = "Log truncated to the most recent 1 MB."
 
 
 class Status(enum.StrEnum):
@@ -23,6 +25,13 @@ class Status(enum.StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
     SKIP = "SKIP"
+
+
+class InstallCause(enum.StrEnum):
+    """Why installation failed. Launch reads this instead of the explanation."""
+
+    MISSING = "missing"
+    UNCONFIRMED = "unconfirmed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +43,8 @@ class CheckResult:
     explanation: str
     log_path: Path | None = None
     log_error: str | None = None
+    log_note: str | None = None
+    install_cause: InstallCause | None = None
 
 
 def run_checks(
@@ -122,10 +133,14 @@ def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckR
             explanation = f"The installation check for {package_name} timed out."
         else:
             explanation = f"The installation check for {package_name} failed."
-        return _fail(_INSTALL, explanation)
+        return _fail(_INSTALL, explanation, install_cause=InstallCause.UNCONFIRMED)
     if result.returncode == 0 and _has_package_line(result):
         return _pass(_INSTALL, f"Package {package_name} is installed.")
-    return _fail(_INSTALL, f"Package {package_name} is not installed.")
+    return _fail(
+        _INSTALL,
+        f"Package {package_name} is not installed.",
+        install_cause=InstallCause.MISSING,
+    )
 
 
 def _launch(
@@ -136,8 +151,7 @@ def _launch(
 ) -> CheckResult:
     package_name = config.package_name
     if install.status is Status.FAIL:
-        missing = install.explanation == f"Package {package_name} is not installed."
-        if missing:
+        if install.install_cause is InstallCause.MISSING:
             explanation = f"Skipped because {package_name} is not installed."
         else:
             explanation = (
@@ -183,7 +197,7 @@ def _with_log(
     path: Path | None = None
     try:
         logs_dir.mkdir(parents=True, exist_ok=True)
-        text = adb.logcat(serial)
+        text, note = _bounded_log(adb.logcat(serial))
         path = logs_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{_slug(result.name)}.log"
         path.write_text(text, encoding="utf-8")
     except AdbError:
@@ -195,7 +209,21 @@ def _with_log(
             except OSError:
                 pass
         return replace(result, log_error="Log capture failed")
-    return replace(result, log_path=path)
+    return replace(result, log_path=path, log_note=note)
+
+
+def _bounded_log(text: str) -> tuple[str, str | None]:
+    """Fit ``text`` in ``_LOG_MAX_BYTES``. The note is set only when it was cut."""
+    raw = text.encode("utf-8")
+    if len(raw) <= _LOG_MAX_BYTES:
+        return text, None
+    tail = raw[-_LOG_MAX_BYTES:].decode("utf-8", errors="ignore")
+    newline = tail.find("\n")
+    if newline != -1:
+        trimmed = tail[newline + 1 :]
+        if trimmed:
+            tail = trimmed
+    return tail, _TRUNCATED_LOG
 
 
 def _slug(name: str) -> str:
@@ -206,8 +234,18 @@ def _pass(name: str, explanation: str) -> CheckResult:
     return CheckResult(name=name, status=Status.PASS, explanation=explanation)
 
 
-def _fail(name: str, explanation: str) -> CheckResult:
-    return CheckResult(name=name, status=Status.FAIL, explanation=explanation)
+def _fail(
+    name: str,
+    explanation: str,
+    *,
+    install_cause: InstallCause | None = None,
+) -> CheckResult:
+    return CheckResult(
+        name=name,
+        status=Status.FAIL,
+        explanation=explanation,
+        install_cause=install_cause,
+    )
 
 
 def _skip(name: str, explanation: str) -> CheckResult:

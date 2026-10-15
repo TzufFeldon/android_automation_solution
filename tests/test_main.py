@@ -215,6 +215,35 @@ def test_failing_check_exits_1_and_writes_the_report(
     assert list((tmp_path / "logs").glob("*battery_level.log"))
 
 
+def test_report_directory_exits_2_without_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info())
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    config = _write_config(tmp_path)
+    report = tmp_path / "report.txt"
+    report.mkdir()
+
+    code = main(
+        [
+            "--config",
+            str(config),
+            "--report",
+            str(report),
+            "--logs",
+            str(tmp_path / "logs"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.err == f"Report path is a directory: {report}.\n"
+    assert "Traceback" not in captured.err
+    assert "Traceback" not in captured.out
+
+
 def test_unexpected_error_propagates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

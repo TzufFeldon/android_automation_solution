@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from android_runner.adb import DeviceInfo
-from android_runner.report import render_report, write_report
+from android_runner.report import ReportError, render_report, write_report
 from android_runner.runner import CheckResult, Status
 
 _SAMPLE = """\
@@ -63,8 +65,9 @@ def _result(
     explanation: str,
     log_path: Path | None = None,
     log_error: str | None = None,
+    log_note: str | None = None,
 ) -> CheckResult:
-    return CheckResult(name, status, explanation, log_path, log_error)
+    return CheckResult(name, status, explanation, log_path, log_error, log_note)
 
 
 def _sample_results() -> list[CheckResult]:
@@ -131,6 +134,24 @@ def test_overall_pass_when_nothing_failed_including_a_skip() -> None:
     assert "Log capture failed" not in text
 
 
+def test_truncated_log_note_follows_the_log_path() -> None:
+    results = [
+        _result(
+            "Battery level",
+            Status.FAIL,
+            "Battery level is 15%, which is lower than 20%.",
+            Path("logs/20261013-215301_battery_level.log"),
+            log_note="Log truncated to the most recent 1 MB.",
+        )
+    ]
+
+    text = render_report(_info(), results)
+
+    assert "    Log: logs/20261013-215301_battery_level.log" in text
+    assert "    Log truncated to the most recent 1 MB." in text
+    assert "Log capture failed" not in text
+
+
 def test_log_capture_failure_is_a_separate_line() -> None:
     results = [
         _result(
@@ -164,6 +185,30 @@ def test_missing_device_fields_and_zero_battery() -> None:
     assert "Manufacturer: unknown" in text
     assert "Battery: 0%" in text
     assert "Overall: PASS" in text
+
+
+def test_write_report_rejects_a_directory(tmp_path: Path) -> None:
+    path = tmp_path / "report.txt"
+    path.mkdir()
+
+    with pytest.raises(ReportError, match="directory") as caught:
+        write_report(path, _info(), [])
+
+    message = str(caught.value)
+    assert "Traceback" not in message
+    assert "\n" not in message
+    assert message.endswith(".")
+
+
+def test_write_report_rejects_a_parent_that_is_a_file(tmp_path: Path) -> None:
+    parent = tmp_path / "not-a-directory"
+    parent.write_text("x", encoding="utf-8")
+
+    with pytest.raises(ReportError, match="could not be written") as caught:
+        write_report(parent / "report.txt", _info(), [])
+
+    assert "Traceback" not in str(caught.value)
+    assert str(caught.value).endswith(".")
 
 
 def test_write_report_overwrites_and_creates_parent_directories(tmp_path: Path) -> None:

@@ -19,3 +19,7 @@ htmlcov/
 # Editors and OS
 .idea/
 .DS_Store
+
+# Output from a run
+report.txt
+logs/*.log

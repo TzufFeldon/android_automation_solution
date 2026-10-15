@@ -8,6 +8,7 @@ import subprocess
 from dataclasses import dataclass
 
 TIMEOUT_SECONDS = 20
+LOGCAT_MAX_LINES = 2000
 
 _ADB_MISSING = (
     "Android SDK Platform-Tools is not available; install it, put "
@@ -105,8 +106,11 @@ class AdbClient:
         )
 
     def logcat(self, serial: str) -> str:
-        """Return ``logcat -d`` output. Raises ``AdbError`` on failure."""
-        args = ["-s", serial, "logcat", "-d"]
+        """Return the most recent ``LOGCAT_MAX_LINES`` from ``logcat -d``.
+
+        Raises ``AdbError`` on failure.
+        """
+        args = ["-s", serial, "logcat", "-d", "-t", str(LOGCAT_MAX_LINES)]
         result = self._run(args)
         if result.returncode != 0:
             raise AdbError(_failure_message(args, result))
@@ -250,7 +254,11 @@ def _major_version(version: str | None) -> int | None:
 
 
 def _battery_percent(text: str | None) -> int | None:
-    """Percent from ``dumpsys battery``. A missing or 100 ``scale`` uses ``level``."""
+    """Percent from ``dumpsys battery``.
+
+    A missing or 100 ``scale`` uses ``level``. Any other positive scale uses
+    ``round(level * 100 / scale)``. A result outside 0 through 100 is ``None``.
+    """
     if text is None:
         return None
     level: int | None = None
@@ -269,7 +277,13 @@ def _battery_percent(text: str | None) -> int | None:
     if level is None:
         return None
     if scale is None or scale == 100:
-        return level
+        return _percent_in_range(level)
     if scale <= 0:
         return None
-    return round(level * 100 / scale)
+    return _percent_in_range(round(level * 100 / scale))
+
+
+def _percent_in_range(value: int) -> int | None:
+    if 0 <= value <= 100:
+        return value
+    return None

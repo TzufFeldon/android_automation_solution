@@ -7,7 +7,13 @@ import pytest
 
 from android_runner.adb import AdbError, CommandResult, DeviceInfo
 from android_runner.config import AppConfig
-from android_runner.runner import Status, run_checks
+from android_runner.runner import (
+    _LOG_MAX_BYTES,
+    _TRUNCATED_LOG,
+    InstallCause,
+    Status,
+    run_checks,
+)
 
 _PACKAGE = "com.android.settings"
 
@@ -251,13 +257,16 @@ def test_missing_package_fails_install_and_skips_launch_without_monkey(
     results = run_checks(adb, _config(), _info(), logs)
 
     assert results[3].status is Status.FAIL
+    assert results[3].install_cause is InstallCause.MISSING
     assert results[3].explanation == f"Package {_PACKAGE} is not installed."
     assert results[4].status is Status.SKIP
+    assert results[4].install_cause is None
     assert results[4].explanation == f"Skipped because {_PACKAGE} is not installed."
     assert results[4].log_path is None
     assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
     log_path = logs / "20261013-215301_application_installation.log"
     assert results[3].log_path == log_path
+    assert results[3].log_note is None
     assert log_path.read_text(encoding="utf-8") == "log line\n"
 
 
@@ -281,6 +290,7 @@ def test_install_adb_failure_does_not_claim_the_package_is_missing(
     results = run_checks(adb, _config(), _info(), tmp_path / "logs")
 
     assert results[3].status is Status.FAIL
+    assert results[3].install_cause is InstallCause.UNCONFIRMED
     assert results[3].explanation == f"The installation check for {_PACKAGE} failed."
     assert "not installed" not in results[3].explanation
     assert results[4].status is Status.SKIP
@@ -299,6 +309,7 @@ def test_install_timeout_skips_launch_and_does_not_claim_the_package_is_missing(
     results = run_checks(adb, _config(), _info(), tmp_path / "logs")
 
     assert results[3].status is Status.FAIL
+    assert results[3].install_cause is InstallCause.UNCONFIRMED
     assert "timed out" in results[3].explanation
     assert results[4].status is Status.SKIP
     assert "could not be confirmed" in results[4].explanation
@@ -358,6 +369,22 @@ def test_two_failures_in_the_same_second_get_distinct_log_files(
     assert install_log.read_text(encoding="utf-8") == "install-log\n"
     assert results[4].status is Status.SKIP
     assert results[4].log_path is None
+
+
+def test_oversized_log_is_truncated_and_keeps_the_tail(tmp_path: Path) -> None:
+    adb = _passing_adb()
+    adb.log_texts = [("a" * _LOG_MAX_BYTES) + "\nkept-tail\n"]
+
+    results = run_checks(adb, _config(), _info(battery_percent=15), tmp_path / "logs")
+
+    battery = results[2]
+    assert battery.status is Status.FAIL
+    assert battery.log_note == _TRUNCATED_LOG
+    assert battery.log_error is None
+    assert battery.log_path is not None
+    saved = battery.log_path.read_text(encoding="utf-8")
+    assert saved == "kept-tail\n"
+    assert len(saved.encode("utf-8")) <= _LOG_MAX_BYTES
 
 
 def test_logcat_failure_keeps_the_original_failure(tmp_path: Path) -> None:

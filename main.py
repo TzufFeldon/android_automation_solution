@@ -8,7 +8,7 @@ from pathlib import Path
 
 from android_runner.adb import AdbClient, AdbError
 from android_runner.config import ConfigError, load_config
-from android_runner.report import write_report
+from android_runner.report import ReportError, write_report
 from android_runner.runner import Status, run_checks
 
 
@@ -32,7 +32,11 @@ def main(argv: list[str] | None = None) -> int:
     logs_dir = Path(args.logs)
     results = run_checks(adb, config, info, logs_dir)
     report_path = Path(args.report)
-    write_report(report_path, info, results)
+    try:
+        write_report(report_path, info, results)
+    except ReportError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     failed = sum(result.status is Status.FAIL for result in results)
     overall = "FAIL" if failed else "PASS"
     print(f"Overall: {overall}; report written to {report_path}.")
