@@ -184,7 +184,7 @@ def test_other_device_state_uses_the_generic_reconnect_sentence(
     )
 
 
-def test_several_ready_devices_ask_for_device_id_without_a_terminal(
+def test_several_ready_devices_require_a_terminal_when_stdin_is_not_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, _calls = _client(
@@ -193,13 +193,14 @@ def test_several_ready_devices_ask_for_device_id_without_a_terminal(
     )
     monkeypatch.setattr(adb_module.sys.stdin, "isatty", lambda: False)
 
-    with pytest.raises(AdbError, match="device_id in config.json") as caught:
+    with pytest.raises(AdbError, match="run in a terminal") as caught:
         client.select_device(None)
 
     message = str(caught.value)
     assert message == (
         "More than one Android device is ready "
-        f"({_SERIAL}, {_OTHER}); set device_id in config.json to one of these serials."
+        f"({_SERIAL}, {_OTHER}); run in a terminal to choose one, "
+        "or set device_id in config.json."
     )
 
 

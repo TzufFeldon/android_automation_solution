@@ -191,7 +191,7 @@ def test_several_ready_devices_exit_2_without_a_report(
     assert code == 2
     assert captured.err == (
         "More than one Android device is ready (emulator-5554, emulator-5556); "
-        "set device_id in config.json to one of these serials.\n"
+        "run in a terminal to choose one, or set device_id in config.json.\n"
     )
     assert "Traceback" not in captured.err
     assert not (tmp_path / "report.txt").exists()

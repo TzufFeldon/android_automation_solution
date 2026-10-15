@@ -48,7 +48,7 @@ python main.py    # Windows
 
 Each run reads `config.json`, writes `report.txt` and `report.json`, and saves failure logs under `logs/`.
 
-Several ready devices prompt once on a terminal. Without a terminal the run exits 2 and names the serials. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass or during the wait stops after the current pass and keeps the exit code of the last completed report. Ctrl+C before any report exits 2.
+Several ready devices prompt once on a terminal. Without a terminal the run exits 2, names the serials, and says to run in a terminal or set `device_id`. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass or during the wait stops after the current pass and keeps the exit code of the last completed report. Ctrl+C before any report exits 2.
 
 ## Checks
 
@@ -132,6 +132,7 @@ Exit 2 prints one sentence on stderr and does not print a traceback.
 | `adb` is not on `PATH`            | Install Android SDK Platform-Tools and verify with `adb version`.                                                           |
 | No device                         | No Android device or emulator is connected.                                                                                 |
 | `unauthorized` or `offline`       | The serial, the state, and how to correct it.                                                                               |
+| Several ready devices, no terminal | The serials, then to run in a terminal or set `device_id`.                                                                  |
 | Invalid configuration             | The missing or invalid field. No traceback.                                                                                 |
 | An ADB command fails or times out | A short command error. Device selection stops the run. A check command fails that check and the remaining checks still run. |
 | Logcat cannot be saved            | The original `FAIL` is kept, the report names the failed log step, and the report is still written.                         |

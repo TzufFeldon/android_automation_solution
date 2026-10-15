@@ -244,8 +244,8 @@ def _select_only_ready(devices: list[DeviceRecord]) -> str:
     if len(ready) > 1:
         serials = ", ".join(record.serial for record in ready)
         raise AdbError(
-            f"More than one Android device is ready ({serials}); set "
-            "device_id in config.json to one of these serials."
+            f"More than one Android device is ready ({serials}); "
+            "run in a terminal to choose one, or set device_id in config.json."
         )
     return ready[0].serial
 
