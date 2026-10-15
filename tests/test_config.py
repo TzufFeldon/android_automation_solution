@@ -65,6 +65,27 @@ def test_null_device_id_means_no_selection(tmp_path: Path) -> None:
     assert config.device_id is None
 
 
+def test_absent_interval_means_one_pass(tmp_path: Path) -> None:
+    config = load_config(_write(tmp_path, _VALID))
+
+    assert config.interval_seconds is None
+
+
+def test_null_interval_means_one_pass(tmp_path: Path) -> None:
+    payload = {**_VALID, "interval_seconds": None}
+
+    config = load_config(_write(tmp_path, payload))
+
+    assert config.interval_seconds is None
+
+
+def test_interval_bounds_are_accepted(tmp_path: Path) -> None:
+    for seconds in (1, 86_400):
+        payload = {**_VALID, "interval_seconds": seconds}
+        config = load_config(_write(tmp_path, payload))
+        assert config.interval_seconds == seconds
+
+
 def test_battery_bounds_are_accepted(tmp_path: Path) -> None:
     for level in (0, 100):
         payload = {**_VALID, "minimum_battery": level}
@@ -269,6 +290,11 @@ def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
         ("device_id", "\nemulator", "whitespace"),
         ("device_id", 5554, "string"),
         ("device_id", True, "boolean"),
+        ("interval_seconds", 0, "1 through 86400"),
+        ("interval_seconds", 86_401, "1 through 86400"),
+        ("interval_seconds", 30.0, "integer"),
+        ("interval_seconds", True, "boolean"),
+        ("interval_seconds", "30", "integer"),
     ],
 )
 def test_invalid_field_values_are_rejected(

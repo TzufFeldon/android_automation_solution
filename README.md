@@ -32,6 +32,7 @@ Edit `config.json`:
 | `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as 8. |
 | `minimum_battery` | Integer from 0 through 100. The level must be greater than this value. Equal fails, including 100 against 100. |
 | `device_id` | Optional serial. Omit it, or set `null` or `""`, when only one device is ready. Leading or trailing spaces are rejected. |
+| `interval_seconds` | Optional wait between passes, an integer from 1 through 86400. Omit it or set `null` for a single pass. Ctrl+C stops after the last completed pass and keeps that exit code. |
 
 Floats, booleans, and unknown keys are rejected. Missing fields are named in the error.
 
@@ -86,7 +87,7 @@ tests/                  pytest, with subprocess mocked
 logs/                   Failure logs from a run
 ```
 
-- Configuration is validated before any ADB call.
+- Configuration is validated before any ADB call. With `interval_seconds`, each pass selects the device again and overwrites `report.txt`. A pass that cannot start or cannot write the report stops the loop with exit 2.
 - ADB commands are argument lists. `shell=True` is not used. Each call times out after 20 seconds.
 - Device selection does not prompt. Several ready devices require `device_id`.
 - A failed check does not stop the others. A failed log capture leaves the check as `FAIL` and adds `Log capture failed` to the report.
@@ -117,7 +118,6 @@ Assumptions:
 
 ## Improvements with more time
 
-- Run the checks on an interval.
 - Limit each failure log to the package and the time of that check.
 - Confirm launch from the resumed activity, not only from `monkey`.
 - Add checks for storage, network, screen state, and the foreground app.

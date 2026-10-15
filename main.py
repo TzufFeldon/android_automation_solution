@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from android_runner.adb import AdbClient, AdbError
-from android_runner.config import ConfigError, load_config
+from android_runner.config import AppConfig, ConfigError, load_config
 from android_runner.report import ReportError, write_report
 from android_runner.runner import Status, run_checks
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one pass and return 0, 1, or 2."""
+    """Run one pass, or repeat it when ``interval_seconds`` is set. Return 0, 1, or 2."""
     args = _parse_args(argv)
     try:
         config = load_config(args.config)
@@ -22,6 +23,22 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     adb = AdbClient()
+    last_code: int | None = None
+    while True:
+        try:
+            code = _run_once(adb, config, args)
+        except KeyboardInterrupt:
+            return _stop(last_code)
+        if code == 2 or config.interval_seconds is None:
+            return code
+        last_code = code
+        try:
+            time.sleep(config.interval_seconds)
+        except KeyboardInterrupt:
+            return _stop(last_code)
+
+
+def _run_once(adb: AdbClient, config: AppConfig, args: argparse.Namespace) -> int:
     try:
         serial = adb.select_device(config.device_id)
         info = adb.read_device_info(serial)
@@ -41,6 +58,14 @@ def main(argv: list[str] | None = None) -> int:
     overall = "FAIL" if failed else "PASS"
     print(f"Overall: {overall}; report written to {report_path}.")
     return 1 if failed else 0
+
+
+def _stop(last_code: int | None) -> int:
+    if last_code is None:
+        print("Stopped before a report was written.", file=sys.stderr)
+        return 2
+    print("Stopped.", file=sys.stderr)
+    return last_code
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:

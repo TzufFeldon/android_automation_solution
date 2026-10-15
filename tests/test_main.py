@@ -244,6 +244,154 @@ def test_report_directory_exits_2_without_a_traceback(
     assert "Traceback" not in captured.out
 
 
+def test_one_pass_does_not_sleep(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info())
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+
+    def forbid_sleep(_seconds: float) -> None:
+        raise AssertionError("one-pass run slept")
+
+    monkeypatch.setattr("main.time.sleep", forbid_sleep)
+    config = _write_config(tmp_path)
+
+    code = main(_argv(config, tmp_path))
+
+    assert code == 0
+    assert client.calls.count(("shell", "emulator-5554", ("echo", "hello"))) == 1
+
+
+def test_interval_repeats_until_stopped(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info())
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    sleeps: list[float] = []
+
+    def stop_on_second_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("main.time.sleep", stop_on_second_sleep)
+    config = _write_config(tmp_path, interval_seconds=30)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    report = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    assert code == 0
+    assert sleeps == [30, 30]
+    assert captured.out.count("Overall: PASS") == 2
+    assert captured.err == "Stopped.\n"
+    assert "Traceback" not in captured.err
+    assert "Overall: PASS" in report
+
+
+def test_interval_keeps_the_last_completed_exit_code(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DroppingBattery(ScriptedClient):
+        def __init__(self) -> None:
+            super().__init__(_info())
+            self.reads = 0
+
+        def read_device_info(self, serial: str) -> DeviceInfo:
+            assert serial == self.info.serial
+            self.reads += 1
+            if self.reads == 2:
+                return _info(battery=15)
+            return self.info
+
+    client = DroppingBattery()
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+
+    def stop_after_the_failed_pass(seconds: float) -> None:
+        if seconds != 15:
+            raise AssertionError(seconds)
+        if client.reads >= 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("main.time.sleep", stop_after_the_failed_pass)
+    config = _write_config(tmp_path, interval_seconds=15)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    report = (tmp_path / "report.txt").read_text(encoding="utf-8")
+    assert code == 1
+    assert "Overall: PASS" in captured.out
+    assert "Overall: FAIL" in captured.out
+    assert captured.err == "Stopped.\n"
+    assert "Battery level is 15%, which is lower than 20%." in report
+
+
+def test_interrupt_before_the_first_report_exits_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Interrupted:
+        def select_device(self, _device_id: str | None) -> str:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("main.AdbClient", Interrupted)
+    config = _write_config(tmp_path, interval_seconds=30)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.err == "Stopped before a report was written.\n"
+    assert "Traceback" not in captured.err
+    assert not (tmp_path / "report.txt").exists()
+
+
+def test_interval_stops_when_a_later_pass_cannot_start(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Disconnects(ScriptedClient):
+        def __init__(self) -> None:
+            super().__init__(_info())
+            self.selections = 0
+
+        def select_device(self, device_id: str | None) -> str:
+            self.selections += 1
+            self.device_id = device_id
+            if self.selections == 2:
+                raise AdbError("No Android device or emulator is connected.")
+            return self.info.serial
+
+    client = Disconnects()
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    slept = False
+
+    def record_sleep(_seconds: float) -> None:
+        nonlocal slept
+        slept = True
+
+    monkeypatch.setattr("main.time.sleep", record_sleep)
+    config = _write_config(tmp_path, interval_seconds=30)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert slept
+    assert "Overall: PASS" in captured.out
+    assert "No Android device or emulator is connected." in captured.err
+    assert "Stopped." not in captured.err
+    assert (tmp_path / "report.txt").exists()
+
+
 def test_unexpected_error_propagates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

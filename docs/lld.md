@@ -4,7 +4,7 @@ Module behavior behind the [high-level design](hld.md). Names below match the co
 
 ## Types
 
-`AppConfig` (`config.py`) is frozen. Fields: `package_name: str`, `minimum_android_version: int`, `minimum_battery: int`, `device_id: str | None`.
+`AppConfig` (`config.py`) is frozen. Fields: `package_name: str`, `minimum_android_version: int`, `minimum_battery: int`, `device_id: str | None`, `interval_seconds: int | None`.
 
 `DeviceRecord` is one `adb devices` row: `serial`, `state`.
 
@@ -22,15 +22,22 @@ Module behavior behind the [high-level design](hld.md). Names below match the co
 
 ```text
 load_config(args.config)          ConfigError → stderr, return 2
-AdbClient().select_device(...)    AdbError    → stderr, return 2
-AdbClient().read_device_info(...)
-run_checks(...)
-write_report(...)                 ReportError → stderr, return 2
-print overall line
-return 1 if any Status.FAIL else 0
+loop:
+  select_device(...)              AdbError    → stderr, return 2
+  read_device_info(...)
+  run_checks(...)
+  write_report(...)               ReportError → stderr, return 2
+  print overall line
+  code = 1 if any Status.FAIL else 0
+  interval_seconds is None        return code
+  time.sleep(interval_seconds)    KeyboardInterrupt → stop
 ```
 
 `SKIP` does not count as failed. The process entry point is `raise SystemExit(main())`.
+
+`interval_seconds` absent or JSON `null` is one pass. A set value repeats from device selection. Sleep starts only after a pass that returned `0` or `1`. The report path is overwritten on each completed pass.
+
+Ctrl+C during a pass or during sleep calls `_stop`. When a pass has already returned `0` or `1`, stderr is `Stopped.` and that code is returned. When none has, stderr is `Stopped before a report was written.` and the code is `2`. A `KeyboardInterrupt` does not print a traceback.
 
 ## Configuration (`config.load_config`)
 
@@ -53,6 +60,8 @@ Unknown and missing keys are reported together, in one sentence. Unknown names a
 `minimum_android_version` is an integer from 1 through 99. `minimum_battery` is an integer from 0 through 100. `bool` is rejected before the integer check, because `bool` is a subclass of `int` in Python. Floats are rejected.
 
 `device_id` absent, JSON `null`, or `""` becomes `None`. Any other non-string is rejected. A string that is not equal to its stripped form is rejected. The stored value is otherwise unchanged, including internal spaces.
+
+`interval_seconds` absent or JSON `null` becomes `None`. Any other value uses the same integer rules as the required numbers: `bool` and floats are rejected, and the accepted range is 1 through 86400.
 
 ## ADB client (`adb.AdbClient`)
 

@@ -16,12 +16,14 @@ _REQUIRED_FIELDS = (
     "minimum_android_version",
     "minimum_battery",
 )
-_ALLOWED_FIELDS = frozenset((*_REQUIRED_FIELDS, "device_id"))
+_ALLOWED_FIELDS = frozenset((*_REQUIRED_FIELDS, "device_id", "interval_seconds"))
 
 _ANDROID_VERSION_MIN = 1
 _ANDROID_VERSION_MAX = 99
 _BATTERY_MIN = 0
 _BATTERY_MAX = 100
+_INTERVAL_MIN = 1
+_INTERVAL_MAX = 86_400
 
 
 class ConfigError(Exception):
@@ -36,6 +38,7 @@ class AppConfig:
     minimum_android_version: int
     minimum_battery: int
     device_id: str | None = None
+    interval_seconds: int | None = None
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -98,11 +101,18 @@ def _validate(payload: object) -> AppConfig:
         _BATTERY_MAX,
     )
     device_id = _optional_device_id(payload.get("device_id"))
+    interval_seconds = _optional_bounded_int(
+        payload.get("interval_seconds"),
+        "interval_seconds",
+        _INTERVAL_MIN,
+        _INTERVAL_MAX,
+    )
     return AppConfig(
         package_name=package_name,
         minimum_android_version=minimum_android_version,
         minimum_battery=minimum_battery,
         device_id=device_id,
+        interval_seconds=interval_seconds,
     )
 
 
@@ -152,6 +162,13 @@ def _require_bounded_int(value: object, field: str, low: int, high: int) -> int:
             f"through {high}; got {value}."
         )
     return value
+
+
+def _optional_bounded_int(value: object, field: str, low: int, high: int) -> int | None:
+    """Bounded integer, or ``None`` when the key is missing or null."""
+    if value is None:
+        return None
+    return _require_bounded_int(value, field, low, high)
 
 
 def _optional_device_id(value: object) -> str | None:

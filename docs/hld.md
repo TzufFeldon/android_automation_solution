@@ -9,12 +9,13 @@ Python 3.12 or newer. The program uses the standard library only.
 - Validate configuration before any ADB call, and stop with a single sentence when the file is unusable.
 - Select one ready device without prompting. Several ready devices require `device_id`.
 - Run all five checks in a fixed order. A failed check does not cancel the rest.
+- Repeat that pass when `interval_seconds` is set, and stop on Ctrl+C with the exit code of the last completed pass.
 - Leave a text report that a person or a script can read, and a log file for each failed check.
 - Return a stable exit code: `0` when nothing failed, `1` when a check failed, `2` when the run could not start or the report could not be written.
 
 ## Out of scope
 
-- Scheduling, a long-running service, or a user interface.
+- A background service, cron, or a user interface.
 - Authorizing the computer, installing a package, granting permissions, or unlocking the screen.
 - Checking more than one device in one run.
 - Confirming that the launched activity is in the foreground.
@@ -56,6 +57,7 @@ Dependencies point inward from `main.py`. `runner` uses `adb` and `config`. `rep
 4. Run the five checks. Version and battery reuse facts already collected. A failed installation skips launch, so `monkey` is not started.
 5. Write the report. `ReportError` prints one sentence to stderr and exits `2`.
 6. Print `Overall: PASS` or `Overall: FAIL` with the report path. Exit `1` when any check is `FAIL`. `SKIP` is not a failure, so exit `0`.
+7. When `interval_seconds` is set and the pass returned `0` or `1`, sleep that many seconds and repeat from step 3. Each pass selects the device again and overwrites the report. Ctrl+C prints `Stopped.` and returns the last completed code. Ctrl+C before any report prints `Stopped before a report was written.` and returns `2`. A later pass that cannot select a device or write the report stops the loop with exit `2` and leaves the previous report in place.
 
 A field that cannot be read (`android_version`, model, manufacturer, battery) stays empty on the device record. That does not abort the run. The matching check fails later with its own explanation.
 
@@ -73,7 +75,7 @@ A field that cannot be read (`android_version`, model, manufacturer, battery) st
 
 **Command line.** `python main.py [--config PATH] [--report PATH] [--logs DIR]`.
 
-**Configuration.** A JSON object. Required: `package_name` (Android package name), `minimum_android_version` (integer 1–99), `minimum_battery` (integer 0–100). Optional: `device_id` (exact serial). Missing, `null`, and `""` mean “the only ready device”. Unknown keys, floats, and booleans are rejected.
+**Configuration.** A JSON object. Required: `package_name` (Android package name), `minimum_android_version` (integer 1–99), `minimum_battery` (integer 0–100). Optional: `device_id` (exact serial). Missing, `null`, and `""` mean “the only ready device”. Optional: `interval_seconds` (integer 1–86400). Missing and `null` mean one pass. Unknown keys, floats, and booleans are rejected.
 
 **ADB.** Argument lists only. `shell=True` is not used. Each call waits at most 20 seconds. Commands used: `adb devices`, `getprop`, `dumpsys battery`, `echo`, `pm path`, `monkey`, `logcat -d -t 2000`.
 
@@ -93,7 +95,7 @@ Exit `2` does not print a traceback.
 
 ## Constraints
 
-- One process, one pass, one device.
+- One process and one device. One pass, unless `interval_seconds` is set.
 - No third-party runtime dependencies. Tests use pytest and mock `subprocess.run`.
 - Device selection never prompts and never picks among several ready serials.
 - Launch success is the `monkey` result. The screen and the foreground app are not inspected.
