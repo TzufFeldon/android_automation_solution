@@ -15,7 +15,7 @@ Python 3.12 or newer. The program uses the standard library only.
 
 ## Out of scope
 
-- A background service, cron, or a user interface.
+- A background service, cron, or a graphical interface.
 - Authorizing the computer, installing a package, granting permissions, or unlocking the screen.
 - Checking more than one device in one run.
 - Confirming that the launched activity is in the foreground.
@@ -31,8 +31,8 @@ config.json ──read──►  main.py
                           ├── android_runner.runner   five checks
                           └── android_runner.report   report.txt
                                                        logs/*.log
-stderr  setup failures (exit 2)
-stdout  one overall line after a report is written
+stderr  setup failures (exit 2), and Stopped. on Ctrl+C
+stdout  one overall line after each completed pass
 ```
 
 Paths are relative to the current working directory unless the caller passes absolute paths. The tool does not search for `adb` outside `PATH`.
@@ -53,7 +53,7 @@ Dependencies point inward from `main.py`. `runner` uses `adb` and `config`. `rep
 
 1. Parse arguments. Defaults are `config.json`, `report.txt`, and `logs`.
 2. Load configuration. `ConfigError` prints one sentence to stderr and exits `2`. No ADB call has happened.
-3. Select a serial and read device info. `AdbError` prints one sentence to stderr and exits `2`. The report is not written.
+3. Select a serial and read device info. `AdbError` prints one sentence to stderr and exits `2`. That pass does not write a report.
 4. Run the five checks. Version and battery reuse facts already collected. A failed installation skips launch, so `monkey` is not started.
 5. Write the report. `ReportError` prints one sentence to stderr and exits `2`.
 6. Print `Overall: PASS` or `Overall: FAIL` with the report path. Exit `1` when any check is `FAIL`. `SKIP` is not a failure, so exit `0`.

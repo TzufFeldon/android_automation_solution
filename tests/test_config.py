@@ -210,7 +210,7 @@ def test_shipped_config_loads() -> None:
 
     assert config.package_name == "com.android.settings"
     assert config.minimum_android_version == 10
-    assert config.minimum_battery == 20
+    assert config.minimum_battery == 30
     assert config.device_id is None
     assert config.interval_seconds == 120
 

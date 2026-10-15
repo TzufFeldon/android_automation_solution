@@ -10,7 +10,7 @@ Python 3.12 or newer. The program uses the standard library only.
 - [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) on `PATH`. Confirm with `adb version`.
   - macOS: `brew install --cask android-platform-tools`, or add the unzipped platform-tools directory to `PATH`.
   - Windows: add the unzipped platform-tools folder to `Path`. If the phone stays `unauthorized`, install the maker's USB driver or the [Google USB Driver](https://developer.android.com/studio/run/win-usb).
-- One device or emulator that `adb devices` lists as `device`. Enable USB debugging and accept the prompt on the phone. An emulator needs no USB driver. `unauthorized` and `offline` are not ready.
+- A device or emulator that `adb devices` lists as `device`. When several are ready, a terminal asks which one to check. Enable USB debugging and accept the prompt on the phone. An emulator needs no USB driver. `unauthorized` and `offline` are not ready.
 
 Run from the project root. `config.json`, `report.txt`, and `logs/` are relative to the current directory.
 
@@ -22,7 +22,8 @@ Edit `config.json`:
 {
   "package_name": "com.android.settings",
   "minimum_android_version": 10,
-  "minimum_battery": 20
+  "minimum_battery": 20,
+  "interval_seconds": 120
 }
 ```
 
@@ -68,7 +69,7 @@ python -m pip install pytest
 python -m pytest
 ```
 
-The tests mock `subprocess.run`. They cover configuration, device selection, a passing run, a failed check, log capture, the report, and exit codes 0, 1, and 2. No device or `adb` binary is required.
+The tests mock `subprocess.run`. They cover configuration, device selection, the terminal prompt, a repeated run, a passing run, a failed check, log capture, the report, and exit codes 0, 1, and 2. No device or `adb` binary is required.
 
 GitHub Actions runs `pytest` from `uv.lock` on Ubuntu with Python 3.12, on pushes to `main` and on pull requests. That job does not install ADB.
 
