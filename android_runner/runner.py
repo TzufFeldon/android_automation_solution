@@ -137,62 +137,39 @@ def _reachable(adb: AdbClient, info: DeviceInfo) -> CheckResult:
     try:
         result = adb.shell(info.serial, "echo", "hello")
     except AdbError as exc:
-        explanation = (
-            "Command 'echo hello' timed out."
-            if exc.timed_out
-            else "Command 'echo hello' did not return 'hello'."
-        )
-        return _fail(_REACHABLE, explanation)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(_REACHABLE, _lines("Command: echo hello", f"Result: {outcome}"))
     if result.returncode == 0 and result.stdout.strip() == "hello":
-        return _pass(
-            _REACHABLE,
-            "Command 'echo hello' succeeded and returned 'hello'.",
-        )
-    return _fail(_REACHABLE, "Command 'echo hello' did not return 'hello'.")
+        return _pass(_REACHABLE, _lines("Command: echo hello", "Result: hello"))
+    return _fail(_REACHABLE, _lines("Command: echo hello", "Result: not hello"))
 
 
 def _version(config: AppConfig, info: DeviceInfo) -> CheckResult:
     minimum = config.minimum_android_version
     if info.android_major is None:
         if info.android_version:
-            explanation = (
-                f"Android version {info.android_version!r} could not be parsed."
-            )
+            detail = _lines(f"Version: {info.android_version}", "Status: unparsed")
         else:
-            explanation = "Android version could not be read."
-        return _fail(_VERSION, explanation)
-    if info.android_major >= minimum:
-        return _pass(
-            _VERSION,
-            f"Major version {info.android_major} is greater than or equal "
-            f"to minimum {minimum}.",
-        )
-    return _fail(
-        _VERSION,
-        f"Major version {info.android_major} is lower than minimum {minimum}.",
+            detail = "Version: unknown"
+        return _fail(_VERSION, detail)
+    detail = _lines(
+        f"Version: {info.android_major}",
+        f"Minimum required: {minimum}",
     )
+    if info.android_major >= minimum:
+        return _pass(_VERSION, detail)
+    return _fail(_VERSION, detail)
 
 
 def _battery(config: AppConfig, info: DeviceInfo) -> CheckResult:
     minimum = config.minimum_battery
     level = info.battery_percent
     if level is None:
-        return _fail(_BATTERY, "Battery level could not be read.")
+        return _fail(_BATTERY, "Battery: unknown")
+    detail = _lines(f"Battery: {level}%", f"Minimum required: {minimum}%")
     if level > minimum:
-        return _pass(
-            _BATTERY,
-            f"Battery level is {level}%, which is greater than {minimum}%.",
-        )
-    if level == minimum:
-        return _fail(
-            _BATTERY,
-            f"Battery level is {level}%, which is equal to {minimum}% "
-            "and must be above it.",
-        )
-    return _fail(
-        _BATTERY,
-        f"Battery level is {level}%, which is lower than {minimum}%.",
-    )
+        return _pass(_BATTERY, detail)
+    return _fail(_BATTERY, detail)
 
 
 def _storage(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult:
@@ -200,68 +177,43 @@ def _storage(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult
     try:
         result = adb.shell(info.serial, "df", "-k", "/data")
     except AdbError as exc:
-        explanation = (
-            "The storage check timed out."
-            if exc.timed_out
-            else "The storage check failed."
-        )
-        return _fail(_STORAGE, explanation)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(_STORAGE, f"Check: {outcome}")
     free_mb = None if result.returncode != 0 else _free_storage_mb(result.stdout)
     if free_mb is None:
-        return _fail(_STORAGE, "Free storage could not be read.")
+        return _fail(_STORAGE, "Free storage: unknown")
+    detail = _lines(f"Free storage: {free_mb} MB", f"Minimum required: {minimum} MB")
     if free_mb > minimum:
-        return _pass(
-            _STORAGE,
-            f"Free storage is {free_mb} MB, which is greater than {minimum} MB.",
-        )
-    if free_mb == minimum:
-        return _fail(
-            _STORAGE,
-            f"Free storage is {free_mb} MB, which is equal to {minimum} MB "
-            "and must be above it.",
-        )
-    return _fail(
-        _STORAGE,
-        f"Free storage is {free_mb} MB, which is lower than {minimum} MB.",
-    )
+        return _pass(_STORAGE, detail)
+    return _fail(_STORAGE, detail)
 
 
 def _network(adb: AdbClient, info: DeviceInfo) -> CheckResult:
     try:
         result = adb.shell(info.serial, "ip", "route", "show", "table", "all")
     except AdbError as exc:
-        explanation = (
-            "The network check timed out."
-            if exc.timed_out
-            else "The network check failed."
-        )
-        return _fail(_NETWORK, explanation)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(_NETWORK, f"Check: {outcome}")
     if result.returncode != 0:
-        return _fail(_NETWORK, "The network check failed.")
+        return _fail(_NETWORK, "Check: failed")
     if _has_default_route(result.stdout):
-        return _pass(_NETWORK, "A default network route is present.")
-    return _fail(
-        _NETWORK,
-        "No default network route is present, so the device cannot reach other networks.",
-    )
+        return _pass(_NETWORK, "Default route: present")
+    return _fail(_NETWORK, "Default route: absent")
 
 
 def _screen(adb: AdbClient, info: DeviceInfo) -> CheckResult:
     try:
         result = adb.shell(info.serial, "dumpsys", "power")
     except AdbError as exc:
-        explanation = (
-            "The screen check timed out."
-            if exc.timed_out
-            else "The screen check failed."
-        )
-        return _fail(_SCREEN, explanation)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(_SCREEN, f"Check: {outcome}")
     state = None if result.returncode != 0 else _screen_state(result.stdout)
     if state is None:
-        return _fail(_SCREEN, "Screen state could not be read.")
+        return _fail(_SCREEN, "Screen: unknown")
+    detail = f"Screen: {state}"
     if state == "Awake":
-        return _pass(_SCREEN, "Screen state is Awake.")
-    return _fail(_SCREEN, f"Screen state is {state}.")
+        return _pass(_SCREEN, detail)
+    return _fail(_SCREEN, detail)
 
 
 def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckResult:
@@ -269,16 +221,17 @@ def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckR
     try:
         result = adb.shell(info.serial, "pm", "path", package_name)
     except AdbError as exc:
-        if exc.timed_out:
-            explanation = f"The installation check for {package_name} timed out."
-        else:
-            explanation = f"The installation check for {package_name} failed."
-        return _fail(_INSTALL, explanation, install_cause=InstallCause.UNCONFIRMED)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(
+            _INSTALL,
+            _lines(f"Package: {package_name}", f"Check: {outcome}"),
+            install_cause=InstallCause.UNCONFIRMED,
+        )
     if result.returncode == 0 and _has_package_line(result):
-        return _pass(_INSTALL, f"Package {package_name} is installed.")
+        return _pass(_INSTALL, _lines(f"Package: {package_name}", "Installed: yes"))
     return _fail(
         _INSTALL,
-        f"Package {package_name} is not installed.",
+        _lines(f"Package: {package_name}", "Installed: no"),
         install_cause=InstallCause.MISSING,
     )
 
@@ -292,12 +245,10 @@ def _install_skip(
     if install.status is not Status.FAIL:
         return None
     if install.install_cause is InstallCause.MISSING:
-        explanation = f"Skipped because {package_name} is not installed."
+        reason = "not installed"
     else:
-        explanation = (
-            f"Skipped because installation of {package_name} could not be confirmed."
-        )
-    return _skip(name, explanation)
+        reason = "unconfirmed"
+    return _skip(name, _lines(f"Package: {package_name}", f"Skipped: {reason}"))
 
 
 def _launch(
@@ -313,24 +264,20 @@ def _launch(
     try:
         result = adb.launch_package(info.serial, package_name)
     except AdbError as exc:
-        explanation = (
-            f"Launch of {package_name} timed out."
-            if exc.timed_out
-            else f"Launch of {package_name} failed."
-        )
-        return _fail(_LAUNCH, explanation)
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(_LAUNCH, _lines(f"Package: {package_name}", f"Launch: {outcome}"))
     output = f"{result.stdout}\n{result.stderr}"
     if result.returncode == 0 and "No activities found" not in output and (
         "monkey aborted" not in output
     ):
-        return _pass(_LAUNCH, f"Launched {package_name} with monkey.")
+        return _pass(_LAUNCH, _lines(f"Package: {package_name}", "Launch: monkey"))
     if "No activities found" in output:
-        explanation = f"No launcher activity was found for {package_name}."
+        outcome = "no activity"
     elif "monkey aborted" in output:
-        explanation = f"Launch of {package_name} failed because monkey aborted."
+        outcome = "monkey aborted"
     else:
-        explanation = f"Launch of {package_name} failed."
-    return _fail(_LAUNCH, explanation)
+        outcome = "failed"
+    return _fail(_LAUNCH, _lines(f"Package: {package_name}", f"Launch: {outcome}"))
 
 
 def _foreground(
@@ -346,20 +293,19 @@ def _foreground(
     try:
         result = adb.shell(info.serial, "dumpsys", "activity", "activities")
     except AdbError as exc:
-        explanation = (
-            f"The foreground check for {package_name} timed out."
-            if exc.timed_out
-            else f"The foreground check for {package_name} failed."
+        outcome = "timed out" if exc.timed_out else "failed"
+        return _fail(
+            _FOREGROUND,
+            _lines(f"Package: {package_name}", f"Check: {outcome}"),
         )
-        return _fail(_FOREGROUND, explanation)
     component = None if result.returncode != 0 else _foreground_component(result.stdout)
     if component is None:
-        return _fail(_FOREGROUND, "Foreground activity could not be read.")
+        return _fail(_FOREGROUND, "Activity: unknown")
     if component.split("/", 1)[0] == package_name:
-        return _pass(_FOREGROUND, f"Foreground activity is {component}.")
+        return _pass(_FOREGROUND, f"Activity: {component}")
     return _fail(
         _FOREGROUND,
-        f"Foreground activity is {component}, not {package_name}.",
+        _lines(f"Activity: {component}", f"Expected: {package_name}"),
     )
 
 
@@ -530,6 +476,10 @@ def _bounded_log(text: str) -> tuple[str, str | None]:
 
 def _slug(name: str) -> str:
     return name.lower().replace(" ", "_")
+
+
+def _lines(*parts: str) -> str:
+    return "\n".join(parts)
 
 
 def _pass(name: str, explanation: str) -> CheckResult:

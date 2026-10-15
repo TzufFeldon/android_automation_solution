@@ -34,17 +34,22 @@ Battery: 86%
 Checks
 ------
 Device is reachable: PASS
-    Command 'echo hello' succeeded and returned 'hello'.
+    Command: echo hello
+    Result: hello
 Android version: PASS
-    Major version 14 is greater than or equal to minimum 10.
+    Version: 14
+    Minimum required: 10
 Battery level: FAIL
-    Battery level is 15%, which is lower than 20%.
+    Battery: 15%
+    Minimum required: 20%
     Log: logs/20261013-215301_battery_level.log
 Application installation: FAIL
-    Package com.android.settings is not installed.
+    Package: com.android.settings
+    Installed: no
     Log: logs/20261013-215302_application_installation.log
 Launch application: SKIP
-    Skipped because com.android.settings is not installed.
+    Package: com.android.settings
+    Skipped: not installed
 
 Totals
 ------
@@ -86,29 +91,29 @@ def _sample_results() -> list[CheckResult]:
         _result(
             "Device is reachable",
             Status.PASS,
-            "Command 'echo hello' succeeded and returned 'hello'.",
+            "Command: echo hello\nResult: hello",
         ),
         _result(
             "Android version",
             Status.PASS,
-            "Major version 14 is greater than or equal to minimum 10.",
+            "Version: 14\nMinimum required: 10",
         ),
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level is 15%, which is lower than 20%.",
+            "Battery: 15%\nMinimum required: 20%",
             Path("logs/20261013-215301_battery_level.log"),
         ),
         _result(
             "Application installation",
             Status.FAIL,
-            "Package com.android.settings is not installed.",
+            "Package: com.android.settings\nInstalled: no",
             Path("logs/20261013-215302_application_installation.log"),
         ),
         _result(
             "Launch application",
             Status.SKIP,
-            "Skipped because com.android.settings is not installed.",
+            "Package: com.android.settings\nSkipped: not installed",
         ),
     ]
 
@@ -150,7 +155,7 @@ def test_truncated_log_note_follows_the_log_path() -> None:
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level is 15%, which is lower than 20%.",
+            "Battery: 15%\nMinimum required: 20%",
             Path("logs/20261013-215301_battery_level.log"),
             log_note="Log truncated to the most recent 1 MB.",
         )
@@ -168,14 +173,15 @@ def test_log_capture_failure_is_a_separate_line() -> None:
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level is 15%, which is lower than 20%.",
+            "Battery: 15%\nMinimum required: 20%",
             log_error="Log capture failed",
         )
     ]
 
     text = render_report(_info(), results)
 
-    assert "    Battery level is 15%, which is lower than 20%." in text
+    assert "    Battery: 15%" in text
+    assert "    Minimum required: 20%" in text
     assert "    Log capture failed" in text
     assert "Log:" not in text
     assert "Overall: FAIL" in text
@@ -276,7 +282,7 @@ def test_json_keeps_null_fields_a_zero_battery_and_log_details() -> None:
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level could not be read.",
+            "Battery: unknown",
             log_error="Log capture failed",
             log_note="Log truncated to the most recent 1 MB.",
         )

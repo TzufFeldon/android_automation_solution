@@ -179,9 +179,7 @@ def test_passing_run_does_not_call_adb_for_version_or_battery_or_logcat(
         ("dumpsys", "activity", "activities"),
     ]
     assert ("launch", "emulator-5554", _PACKAGE) in adb.calls
-    assert results[1].explanation == (
-        "Major version 14 is greater than or equal to minimum 10."
-    )
+    assert results[1].explanation == "Version: 14\nMinimum required: 10"
 
 
 @pytest.mark.parametrize(
@@ -214,7 +212,7 @@ def test_reachable_timeout_still_runs_the_remaining_checks(tmp_path: Path) -> No
     results = run_checks(adb, _config(), _info(), tmp_path / "logs")
 
     assert results[0].status is Status.FAIL
-    assert results[0].explanation == "Command 'echo hello' timed out."
+    assert results[0].explanation == "Command: echo hello\nResult: timed out"
     assert [result.status for result in results[1:]] == [Status.PASS] * 8
     assert ("pm", "path", _PACKAGE) in [call[2] for call in adb.calls if call[0] == "shell"]
 
@@ -222,11 +220,11 @@ def test_reachable_timeout_still_runs_the_remaining_checks(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("version", "major", "minimum", "status", "snippet"),
     [
-        ("14", 14, 10, Status.PASS, "greater than or equal to minimum 10"),
-        ("8.1.0", 8, 8, Status.PASS, "greater than or equal to minimum 8"),
-        ("8.1.0", 8, 10, Status.FAIL, "lower than minimum 10"),
-        ("Next", None, 10, Status.FAIL, "could not be parsed"),
-        (None, None, 10, Status.FAIL, "could not be read"),
+        ("14", 14, 10, Status.PASS, "Version: 14\nMinimum required: 10"),
+        ("8.1.0", 8, 8, Status.PASS, "Version: 8\nMinimum required: 8"),
+        ("8.1.0", 8, 10, Status.FAIL, "Version: 8\nMinimum required: 10"),
+        ("Next", None, 10, Status.FAIL, "Status: unparsed"),
+        (None, None, 10, Status.FAIL, "Version: unknown"),
     ],
 )
 def test_version_check(
@@ -277,19 +275,10 @@ def test_battery_threshold(
     battery = results[2]
     assert battery.status is status
     if level is None:
-        assert battery.explanation == "Battery level could not be read."
-    elif level == minimum:
-        assert battery.explanation == (
-            f"Battery level is {level}%, which is equal to {minimum}% "
-            "and must be above it."
-        )
-    elif status is Status.FAIL:
-        assert battery.explanation == (
-            f"Battery level is {level}%, which is lower than {minimum}%."
-        )
+        assert battery.explanation == "Battery: unknown"
     else:
         assert battery.explanation == (
-            f"Battery level is {level}%, which is greater than {minimum}%."
+            f"Battery: {level}%\nMinimum required: {minimum}%"
         )
     if status is Status.FAIL:
         assert battery.log_path is not None
@@ -312,10 +301,10 @@ def test_missing_package_fails_install_and_skips_launch_without_monkey(
     foreground = _check(results, "Foreground activity")
     assert install.status is Status.FAIL
     assert install.install_cause is InstallCause.MISSING
-    assert install.explanation == f"Package {_PACKAGE} is not installed."
+    assert install.explanation == f"Package: {_PACKAGE}\nInstalled: no"
     assert launch.status is Status.SKIP
     assert launch.install_cause is None
-    assert launch.explanation == f"Skipped because {_PACKAGE} is not installed."
+    assert launch.explanation == f"Package: {_PACKAGE}\nSkipped: not installed"
     assert launch.log_path is None
     assert foreground.status is Status.SKIP
     assert foreground.explanation == launch.explanation
@@ -353,13 +342,13 @@ def test_install_adb_failure_does_not_claim_the_package_is_missing(
     foreground = _check(results, "Foreground activity")
     assert install.status is Status.FAIL
     assert install.install_cause is InstallCause.UNCONFIRMED
-    assert install.explanation == f"The installation check for {_PACKAGE} failed."
-    assert "not installed" not in install.explanation
+    assert install.explanation == f"Package: {_PACKAGE}\nCheck: failed"
+    assert "Installed: no" not in install.explanation
     assert launch.status is Status.SKIP
-    assert "could not be confirmed" in launch.explanation
-    assert "not installed" not in launch.explanation
+    assert "unconfirmed" in launch.explanation
+    assert "Installed: no" not in launch.explanation
     assert foreground.status is Status.SKIP
-    assert "could not be confirmed" in foreground.explanation
+    assert "unconfirmed" in foreground.explanation
     assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
     shell_args = [call[2] for call in adb.calls if call[0] == "shell"]
     assert ("dumpsys", "activity", "activities") not in shell_args
@@ -381,7 +370,7 @@ def test_install_timeout_skips_launch_and_does_not_claim_the_package_is_missing(
     assert install.install_cause is InstallCause.UNCONFIRMED
     assert "timed out" in install.explanation
     assert launch.status is Status.SKIP
-    assert "could not be confirmed" in launch.explanation
+    assert "unconfirmed" in launch.explanation
     assert foreground.status is Status.SKIP
     assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
 
@@ -389,11 +378,11 @@ def test_install_timeout_skips_launch_and_does_not_claim_the_package_is_missing(
 @pytest.mark.parametrize(
     ("code", "stdout", "stderr", "snippet"),
     [
-        (0, "Events injected: 1\n", "", "Launched"),
-        (0, "No activities found\n", "", "No launcher activity"),
-        (1, "", "monkey aborted", "monkey aborted"),
-        (1, "", "", "failed"),
-        (0, "ok", "No activities found", "No launcher activity"),
+        (0, "Events injected: 1\n", "", "Launch: monkey"),
+        (0, "No activities found\n", "", "Launch: no activity"),
+        (1, "", "monkey aborted", "Launch: monkey aborted"),
+        (1, "", "", "Launch: failed"),
+        (0, "ok", "No activities found", "Launch: no activity"),
     ],
 )
 def test_launch_output(
@@ -409,7 +398,7 @@ def test_launch_output(
 
     launch = _check(results, "Launch application")
     assert snippet in launch.explanation
-    if code == 0 and snippet == "Launched":
+    if code == 0 and snippet == "Launch: monkey":
         assert launch.status is Status.PASS
         assert launch.log_path is None
     else:
@@ -423,7 +412,7 @@ def test_launch_timeout_has_its_own_sentence(tmp_path: Path) -> None:
 
     launch = _check(results, "Launch application")
     assert launch.status is Status.FAIL
-    assert launch.explanation == f"Launch of {_PACKAGE} timed out."
+    assert launch.explanation == f"Package: {_PACKAGE}\nLaunch: timed out"
     assert _check(results, "Foreground activity").status is Status.PASS
 
 
@@ -573,7 +562,7 @@ def test_logcat_failure_keeps_the_original_failure(tmp_path: Path) -> None:
 
     battery = results[2]
     assert battery.status is Status.FAIL
-    assert battery.explanation == "Battery level is 15%, which is lower than 20%."
+    assert battery.explanation == "Battery: 15%\nMinimum required: 20%"
     assert battery.log_path is None
     assert battery.log_error == "Log capture failed because logcat could not be read."
     assert list(logs.glob("*.log")) == []
@@ -587,22 +576,24 @@ def test_log_directory_that_is_a_file_does_not_abort_the_run(tmp_path: Path) -> 
     results = run_checks(_passing_adb(), _config(), _info(battery_percent=15), logs)
 
     assert results[2].status is Status.FAIL
-    assert results[2].explanation.startswith("Battery level is 15%")
+    assert results[2].explanation.startswith("Battery: 15%")
     assert results[2].log_error == (
         "Log capture failed because the log file could not be written."
     )
     assert results[3].status is Status.PASS
 
 
-def test_every_explanation_is_one_line(tmp_path: Path) -> None:
+def test_explanations_are_short_labels(tmp_path: Path) -> None:
     adb = _passing_adb({("echo", "hello"): _ok("nope")})
 
     results = run_checks(adb, _config(), _info(battery_percent=20), tmp_path / "logs")
 
     for result in results:
-        assert "\n" not in result.explanation
-        assert result.explanation.endswith(".")
         assert "Traceback" not in result.explanation
+        for line in result.explanation.splitlines():
+            assert line
+            assert ":" in line
+            assert not line.endswith(".")
 
 
 def test_device_clock_is_read_before_each_check(tmp_path: Path) -> None:
@@ -654,7 +645,7 @@ def test_unreadable_device_clock_does_not_save_a_log(tmp_path: Path) -> None:
     assert not any(call[0] == "logcat" for call in adb.calls)
     battery = results[2]
     assert battery.status is Status.FAIL
-    assert battery.explanation == "Battery level is 15%, which is lower than 20%."
+    assert battery.explanation == "Battery: 15%\nMinimum required: 20%"
     assert battery.log_path is None
     assert battery.log_note is None
     assert battery.log_error == (
@@ -758,7 +749,7 @@ def test_unreadable_clock_leaves_an_app_check_failure_unchanged(
 
     install = _check(results, "Application installation")
     assert install.status is Status.FAIL
-    assert install.explanation == f"Package {_PACKAGE} is not installed."
+    assert install.explanation == f"Package: {_PACKAGE}\nInstalled: no"
     assert install.log_path is None
     assert install.log_note is None
     assert install.log_error == (
@@ -782,7 +773,7 @@ def test_error_lines_do_not_change_the_check_result(tmp_path: Path) -> None:
 
     battery = results[2]
     assert battery.status is Status.FAIL
-    assert battery.explanation == "Battery level is 15%, which is lower than 20%."
+    assert battery.explanation == "Battery: 15%\nMinimum required: 20%"
     assert battery.log_note == (
         "2 error lines in this check. First: AndroidRuntime: FATAL EXCEPTION: main."
     )
@@ -811,11 +802,11 @@ def test_error_note_counts_only_threadtime_error_and_fatal_lines() -> None:
 
 def test_storage_compares_truncated_mebibytes(tmp_path: Path) -> None:
     cases = [
-        (204_800, 100, Status.PASS, "200 MB, which is greater than 100 MB"),
-        (102_400, 100, Status.FAIL, "100 MB, which is equal to 100 MB"),
-        (51_200, 100, Status.FAIL, "50 MB, which is lower than 100 MB"),
-        (1023, 0, Status.FAIL, "0 MB, which is equal to 0 MB"),
-        (1024, 0, Status.PASS, "1 MB, which is greater than 0 MB"),
+        (204_800, 100, Status.PASS, "Free storage: 200 MB\nMinimum required: 100 MB"),
+        (102_400, 100, Status.FAIL, "Free storage: 100 MB\nMinimum required: 100 MB"),
+        (51_200, 100, Status.FAIL, "Free storage: 50 MB\nMinimum required: 100 MB"),
+        (1023, 0, Status.FAIL, "Free storage: 0 MB\nMinimum required: 0 MB"),
+        (1024, 0, Status.PASS, "Free storage: 1 MB\nMinimum required: 0 MB"),
     ]
     for available, minimum, status, snippet in cases:
         adb = _passing_adb({("df", "-k", "/data"): _ok(_df(available))})
@@ -827,16 +818,16 @@ def test_storage_compares_truncated_mebibytes(tmp_path: Path) -> None:
         )
         storage = _check(results, "Free storage")
         assert storage.status is status
-        assert snippet in storage.explanation
+        assert storage.explanation == snippet
         assert _check(results, "Launch application").status is Status.PASS
 
 
 @pytest.mark.parametrize(
     ("stdout", "code", "snippet"),
     [
-        ("Filesystem\nnot a table\n", 0, "could not be read"),
-        ("/dev/data 3.7G 1.0G 2.7G 27% /data\n", 0, "could not be read"),
-        ("", 1, "could not be read"),
+        ("Filesystem\nnot a table\n", 0, "Free storage: unknown"),
+        ("/dev/data 3.7G 1.0G 2.7G 27% /data\n", 0, "Free storage: unknown"),
+        ("", 1, "Free storage: unknown"),
     ],
 )
 def test_unreadable_storage_fails(
@@ -851,7 +842,7 @@ def test_unreadable_storage_fails(
 
     storage = _check(results, "Free storage")
     assert storage.status is Status.FAIL
-    assert snippet in storage.explanation
+    assert storage.explanation == snippet
 
 
 def test_storage_timeout_and_adb_error_have_their_own_sentences(tmp_path: Path) -> None:
@@ -869,8 +860,8 @@ def test_storage_timeout_and_adb_error_have_their_own_sentences(tmp_path: Path) 
         "Free storage",
     )
 
-    assert timeout_result.explanation == "The storage check timed out."
-    assert failed_result.explanation == "The storage check failed."
+    assert timeout_result.explanation == "Check: timed out"
+    assert failed_result.explanation == "Check: failed"
 
 
 def test_storage_uses_the_first_capacity_column(tmp_path: Path) -> None:
@@ -891,27 +882,27 @@ def test_storage_uses_the_first_capacity_column(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("stdout", "status", "snippet"),
     [
-        ("default via 10.0.2.2 dev eth0\n", Status.PASS, "default network route is present"),
-        ("  default via fe80::1 dev wlan0\n", Status.PASS, "default network route is present"),
+        ("default via 10.0.2.2 dev eth0\n", Status.PASS, "Default route: present"),
+        ("  default via fe80::1 dev wlan0\n", Status.PASS, "Default route: present"),
         (
             "default dev dummy0 table 1002 proto static scope link\n"
             "default via 10.0.2.2 dev eth0 table 1015 proto static\n",
             Status.PASS,
-            "default network route is present",
+            "Default route: present",
         ),
         (
             "10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15\n"
             "default dev dummy0 table 1002 proto static scope link\n",
             Status.FAIL,
-            "cannot reach other networks",
+            "Default route: absent",
         ),
         (
             "10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15\n",
             Status.FAIL,
-            "cannot reach other networks",
+            "Default route: absent",
         ),
-        ("", Status.FAIL, "cannot reach other networks"),
-        ("Cannot open netlink\n", Status.FAIL, "The network check failed."),
+        ("", Status.FAIL, "Default route: absent"),
+        ("Cannot open netlink\n", Status.FAIL, "Check: failed"),
     ],
 )
 def test_network_route(
@@ -947,31 +938,31 @@ def test_network_timeout_and_adb_error_have_their_own_sentences(tmp_path: Path) 
         "Network",
     )
 
-    assert timeout_result.explanation == "The network check timed out."
-    assert failed_result.explanation == "The network check failed."
+    assert timeout_result.explanation == "Check: timed out"
+    assert failed_result.explanation == "Check: failed"
     assert "route" not in timeout_result.explanation
 
 
 @pytest.mark.parametrize(
     ("stdout", "status", "snippet"),
     [
-        ("  mWakefulness=Awake\n", Status.PASS, "Screen state is Awake."),
-        ("mWakefulness=1\n", Status.PASS, "Screen state is Awake."),
-        ("  mWakefulness=Asleep\n", Status.FAIL, "Screen state is Asleep."),
-        ("mWakefulness=Dozing\n", Status.FAIL, "Screen state is Dozing."),
-        ("mWakefulness=Dreaming\n", Status.FAIL, "Screen state is Dreaming."),
-        ("mWakefulness=0\n", Status.FAIL, "Screen state is Asleep."),
-        ("mScreenOn=true\n", Status.PASS, "Screen state is Awake."),
-        ("mScreenOn=false\n", Status.FAIL, "Screen state is Asleep."),
+        ("  mWakefulness=Awake\n", Status.PASS, "Screen: Awake"),
+        ("mWakefulness=1\n", Status.PASS, "Screen: Awake"),
+        ("  mWakefulness=Asleep\n", Status.FAIL, "Screen: Asleep"),
+        ("mWakefulness=Dozing\n", Status.FAIL, "Screen: Dozing"),
+        ("mWakefulness=Dreaming\n", Status.FAIL, "Screen: Dreaming"),
+        ("mWakefulness=0\n", Status.FAIL, "Screen: Asleep"),
+        ("mScreenOn=true\n", Status.PASS, "Screen: Awake"),
+        ("mScreenOn=false\n", Status.FAIL, "Screen: Asleep"),
         (
             "mWakefulness=Unknown\nmScreenOn=true\n",
             Status.FAIL,
-            "Screen state could not be read.",
+            "Screen: unknown",
         ),
-        ("", Status.FAIL, "Screen state could not be read."),
-        ("permission denied\n", Status.FAIL, "Screen state could not be read."),
-        ("mWakefulness=2\n", Status.FAIL, "Screen state is Dreaming."),
-        ("mWakefulness=3\n", Status.FAIL, "Screen state is Dozing."),
+        ("", Status.FAIL, "Screen: unknown"),
+        ("permission denied\n", Status.FAIL, "Screen: unknown"),
+        ("mWakefulness=2\n", Status.FAIL, "Screen: Dreaming"),
+        ("mWakefulness=3\n", Status.FAIL, "Screen: Dozing"),
     ],
 )
 def test_screen_state(tmp_path: Path, stdout: str, status: Status, snippet: str) -> None:
@@ -1000,8 +991,8 @@ def test_screen_timeout_and_adb_error_have_their_own_sentences(tmp_path: Path) -
         "Screen state",
     )
 
-    assert timeout_result.explanation == "The screen check timed out."
-    assert failed_result.explanation == "The screen check failed."
+    assert timeout_result.explanation == "Check: timed out"
+    assert failed_result.explanation == "Check: failed"
 
 
 def test_foreground_prefers_top_resumed_activity(tmp_path: Path) -> None:
@@ -1015,7 +1006,7 @@ def test_foreground_prefers_top_resumed_activity(tmp_path: Path) -> None:
 
     foreground = _check(results, "Foreground activity")
     assert foreground.status is Status.PASS
-    assert foreground.explanation == "Foreground activity is com.android.settings/.Settings."
+    assert foreground.explanation == "Activity: com.android.settings/.Settings"
 
 
 def test_foreground_uses_resumed_activity_when_top_is_absent(tmp_path: Path) -> None:
@@ -1030,7 +1021,7 @@ def test_foreground_uses_resumed_activity_when_top_is_absent(tmp_path: Path) -> 
     assert foreground.status is Status.PASS
     assert (
         foreground.explanation
-        == "Foreground activity is com.android.settings/com.android.settings.Settings."
+        == "Activity: com.android.settings/com.android.settings.Settings"
     )
 
 
@@ -1045,8 +1036,7 @@ def test_foreground_names_a_different_package(tmp_path: Path) -> None:
     foreground = _check(results, "Foreground activity")
     assert foreground.status is Status.FAIL
     assert foreground.explanation == (
-        "Foreground activity is com.android.launcher3/.Launcher, "
-        f"not {_PACKAGE}."
+        f"Activity: com.android.launcher3/.Launcher\nExpected: {_PACKAGE}"
     )
 
 
@@ -1064,8 +1054,8 @@ def test_foreground_runs_after_a_failed_launch(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("stdout", "code", "snippet"),
     [
-        ("no resumed activity\n", 0, "could not be read"),
-        ("", 1, "could not be read"),
+        ("no resumed activity\n", 0, "Activity: unknown"),
+        ("", 1, "Activity: unknown"),
     ],
 )
 def test_unreadable_foreground_fails(
@@ -1097,7 +1087,5 @@ def test_foreground_timeout_and_adb_error_have_their_own_sentences(tmp_path: Pat
         "Foreground activity",
     )
 
-    assert timeout_result.explanation == (
-        f"The foreground check for {_PACKAGE} timed out."
-    )
-    assert failed_result.explanation == f"The foreground check for {_PACKAGE} failed."
+    assert timeout_result.explanation == f"Package: {_PACKAGE}\nCheck: timed out"
+    assert failed_result.explanation == f"Package: {_PACKAGE}\nCheck: failed"

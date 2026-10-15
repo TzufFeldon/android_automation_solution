@@ -70,7 +70,7 @@ A failed check writes `logs/YYYYMMDD-HHMMSS_<check_name>.log`. The file is logca
 
 ## Reports
 
-`report.txt` lists the device, each check with a one-line explanation, totals, and an overall `PASS` or `FAIL`. Device fields are the serial, Android version, model, manufacturer, and battery percent. Unread text fields print as `unknown`.
+`report.txt` lists the device, each check with short label lines, totals, and an overall `PASS` or `FAIL`. A threshold check prints the measured value, then `Minimum required` on the next line. Device fields are the serial, Android version, model, manufacturer, and battery percent. Unread text fields print as `unknown`.
 
 `report.json` has the same result: device fields, a `checks` array, `totals`, and `overall`. Unread device fields are JSON `null`. `log_path` is set when a failure log was saved.
 

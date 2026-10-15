@@ -56,7 +56,8 @@ def render_report(
     ]
     for result in results:
         lines.append(f"{result.name}: {result.status.value}")
-        lines.append(f"    {result.explanation}")
+        for detail in result.explanation.splitlines():
+            lines.append(f"    {detail}")
         if result.log_path is not None:
             lines.append(f"    Log: {result.log_path.as_posix()}")
         if result.log_note is not None:

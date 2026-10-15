@@ -242,7 +242,7 @@ def test_failing_check_exits_1_and_writes_the_report(
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 1
-    assert "Battery level is 15%, which is lower than 20%." in report
+    assert "    Battery: 15%\n    Minimum required: 20%" in report
     assert "Overall: FAIL" in report
     assert list((tmp_path / "logs").glob("*battery_level.log"))
 
@@ -418,7 +418,7 @@ def test_interval_keeps_the_last_completed_exit_code(
     assert "Overall: PASS" in captured.out
     assert "Overall: FAIL" in captured.out
     assert captured.err == "Stopped.\n"
-    assert "Battery level is 15%, which is lower than 20%." in report
+    assert "    Battery: 15%\n    Minimum required: 20%" in report
 
 
 def test_interval_reuses_the_serial_chosen_on_the_first_pass(
