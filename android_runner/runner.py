@@ -74,6 +74,13 @@ class CheckResult:
     install_cause: InstallCause | None = None
 
 
+def overall_status(results: list[CheckResult]) -> Status:
+    """``FAIL`` when any check failed. ``SKIP`` is not a failure."""
+    if any(result.status is Status.FAIL for result in results):
+        return Status.FAIL
+    return Status.PASS
+
+
 def run_checks(
     adb: AdbClient,
     config: AppConfig,

@@ -10,7 +10,7 @@ from pathlib import Path
 from android_runner.adb import AdbClient, AdbError
 from android_runner.config import AppConfig, ConfigError, load_config
 from android_runner.report import ReportError, json_report_path, write_report
-from android_runner.runner import Status, run_checks
+from android_runner.runner import Status, overall_status, run_checks
 
 _CONFIG_PATH = Path("config.json")
 _REPORT_PATH = Path("report.txt")
@@ -69,13 +69,12 @@ def _run_once(
     except ReportError as exc:
         print(exc, file=sys.stderr)
         return 2, None
-    failed = sum(result.status is Status.FAIL for result in results)
-    overall = "FAIL" if failed else "PASS"
+    overall = overall_status(results)
     print(
-        f"{ran_at:%Y-%m-%d %H:%M:%S} Overall: {overall}; "
+        f"{ran_at:%Y-%m-%d %H:%M:%S} Overall: {overall.value}; "
         f"report written to {report_path} and {json_path}."
     )
-    return (1 if failed else 0), serial
+    return (1 if overall is Status.FAIL else 0), serial
 
 
 def _stop(last_code: int | None) -> int:

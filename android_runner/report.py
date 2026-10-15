@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from android_runner.adb import DeviceInfo
-from android_runner.runner import CheckResult, Status
+from android_runner.runner import CheckResult, Status, overall_status
 
 
 class ReportError(Exception):
@@ -37,6 +37,7 @@ def render_report(
     The title names the connected serial. ``Run`` is local time with seconds.
     """
     passed, failed, skipped = _counts(results)
+    overall = overall_status(results)
     title = f"Android Automation Report: {info.serial}"
     lines = [
         title,
@@ -74,7 +75,7 @@ def render_report(
             f"Skipped: {skipped}",
             f"All: {passed + failed + skipped}",
             "",
-            f"Overall: {'FAIL' if failed else 'PASS'}",
+            f"Overall: {overall.value}",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -92,6 +93,7 @@ def render_json(
     ``ran_at`` is local ``YYYY-MM-DD HH:MM:SS``.
     """
     passed, failed, skipped = _counts(results)
+    overall = overall_status(results)
     payload = {
         "ran_at": _stamp(ran_at),
         "device": {
@@ -121,7 +123,7 @@ def render_json(
             "skipped": skipped,
             "all": passed + failed + skipped,
         },
-        "overall": "FAIL" if failed else "PASS",
+        "overall": overall.value,
     }
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
