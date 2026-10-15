@@ -162,6 +162,24 @@ def test_invalid_package_name_is_rejected(tmp_path: Path) -> None:
     _assert_error(_write(tmp_path, payload), "Android package name")
 
 
+def test_package_name_longer_than_80_characters_omits_the_value(tmp_path: Path) -> None:
+    included = "x" * 80
+    omitted = "x" * 81
+
+    shown = _assert_error(
+        _write(tmp_path, {**_VALID, "package_name": included}),
+        "Android package name",
+    )
+    hidden = _assert_error(
+        _write(tmp_path, {**_VALID, "package_name": omitted}),
+        "Android package name",
+    )
+
+    assert f"got {included!r}" in shown
+    assert "got" not in hidden
+    assert omitted not in hidden
+
+
 def test_boolean_is_rejected_for_android_version(tmp_path: Path) -> None:
     payload = {**_VALID, "minimum_android_version": True}
 
@@ -279,6 +297,18 @@ def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
 
     assert "'aaa'" in message
     assert "'zzz'" in message
+
+
+def test_unknown_and_missing_fields_are_reported_together(tmp_path: Path) -> None:
+    payload = {"package_name": "com.android.settings", "zzz": 1, "aaa": 2}
+
+    message = _assert_error(_write(tmp_path, payload), "unknown fields")
+
+    assert message == (
+        "Configuration contains unknown fields 'aaa', 'zzz' and is missing "
+        "required fields 'minimum_android_version', 'minimum_battery', "
+        "'minimum_free_storage_mb'."
+    )
 
 
 @pytest.mark.parametrize(

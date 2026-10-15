@@ -52,11 +52,11 @@ Dependencies point inward from `main.py`. `runner` uses `adb` and `config`. `rep
 
 1. Parse arguments. Defaults are `config.json`, `report.txt`, and `logs`.
 2. Load configuration. `ConfigError` prints one sentence to stderr and exits `2`. No ADB call has happened.
-3. Select a serial and read device info. `AdbError` prints one sentence to stderr and exits `2`. That pass does not write a report.
+3. Select a serial and read device info. Print `Connected device: {serial}` once, including when that serial was the only ready device. `AdbError` prints one sentence to stderr and exits `2`. That pass does not write a report.
 4. Run the nine checks. Version and battery reuse facts already collected. A failed installation skips launch and the foreground check, so `monkey` is not started and the resumed activity is not read.
 5. Write the text report and the JSON report. `ReportError` prints one sentence to stderr and exits `2`.
-6. Print `Connected device: {serial}`, including when that serial was the only ready device. Then print the local time with seconds, `Overall: PASS` or `Overall: FAIL`, and both report paths. Exit `1` when any check is `FAIL`. `SKIP` is not a failure, so exit `0`.
-7. When `interval_seconds` is set and the pass returned `0` or `1`, sleep that many seconds and repeat from step 3. Later passes use the serial from the first pass, so a terminal prompt is not repeated. Each completed pass overwrites both report files. Ctrl+C prints `Stopped.` and returns the last completed code. Ctrl+C before any report prints `Stopped before a report was written.` and returns `2`. A later pass that cannot select a device or write a report stops the loop with exit `2` and leaves the previous report files in place.
+6. Print the local time with seconds, `Overall: PASS` or `Overall: FAIL`, and both report paths. Exit `1` when any check is `FAIL`. `SKIP` is not a failure, so exit `0`.
+7. When `interval_seconds` is set and the pass returned `0` or `1`, sleep that many seconds and repeat from step 3. Later passes use the serial from the first pass, so the terminal prompt and the connected-device line are not repeated. Each completed pass overwrites both report files. Ctrl+C prints `Stopped.` and returns the last completed code. Ctrl+C before any report prints `Stopped before a report was written.` and returns `2`. A later pass that cannot select a device or write a report stops the loop with exit `2` and leaves the previous report files in place.
 
 Unread version, model, manufacturer, and battery stay empty on the device record and do not abort the run. The version and battery checks then fail with their own explanations.
 

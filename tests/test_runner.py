@@ -416,6 +416,17 @@ def test_launch_output(
         assert launch.status is Status.FAIL
 
 
+def test_launch_timeout_has_its_own_sentence(tmp_path: Path) -> None:
+    adb = _passing_adb({("launch", _PACKAGE): AdbError("timed out", timed_out=True)})
+
+    results = run_checks(adb, _config(), _info(), tmp_path / "logs")
+
+    launch = _check(results, "Launch application")
+    assert launch.status is Status.FAIL
+    assert launch.explanation == f"Launch of {_PACKAGE} timed out."
+    assert _check(results, "Foreground activity").status is Status.PASS
+
+
 def test_two_failures_in_the_same_second_get_distinct_log_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -457,6 +468,100 @@ def test_oversized_log_is_truncated_and_keeps_the_tail(tmp_path: Path) -> None:
     saved = battery.log_path.read_text(encoding="utf-8")
     assert saved == "kept-tail\n"
     assert len(saved.encode("utf-8")) <= _LOG_MAX_BYTES
+
+
+def test_truncated_log_without_a_newline_keeps_the_decoded_tail(tmp_path: Path) -> None:
+    adb = _passing_adb()
+    adb.log_texts = ["HEAD" + ("b" * _LOG_MAX_BYTES)]
+
+    results = run_checks(adb, _config(), _info(battery_percent=15), tmp_path / "logs")
+
+    battery = results[2]
+    assert battery.log_path is not None
+    assert battery.log_path.read_text(encoding="utf-8") == "b" * _LOG_MAX_BYTES
+    assert battery.log_note == _TRUNCATED_LOG
+
+
+def test_truncated_log_keeps_a_partial_line_when_nothing_follows_it(tmp_path: Path) -> None:
+    partial = ("b" * (_LOG_MAX_BYTES - 1)) + "\n"
+    adb = _passing_adb()
+    adb.log_texts = ["HEAD" + partial]
+
+    results = run_checks(adb, _config(), _info(battery_percent=15), tmp_path / "logs")
+
+    battery = results[2]
+    assert battery.log_path is not None
+    assert battery.log_path.read_text(encoding="utf-8") == partial
+    assert battery.log_note == _TRUNCATED_LOG
+
+
+def test_truncated_log_note_joins_the_error_count(tmp_path: Path) -> None:
+    error = "10-15 14:05:01.200  10  10 E Tag: boom\n"
+    adb = _passing_adb()
+    adb.log_texts = [("a" * _LOG_MAX_BYTES) + "\n" + error]
+
+    results = run_checks(adb, _config(), _info(battery_percent=15), tmp_path / "logs")
+
+    battery = results[2]
+    assert battery.log_path is not None
+    assert battery.log_path.read_text(encoding="utf-8") == error
+    assert battery.log_note == (
+        f"{_TRUNCATED_LOG} 1 error line in this check. First: Tag: boom."
+    )
+
+
+def test_failed_log_write_removes_the_partial_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logs = tmp_path / "logs"
+
+    def fail_after_a_partial_write(self: Path, *_args: object, **_kwargs: object) -> int:
+        self.write_bytes(b"partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", fail_after_a_partial_write)
+
+    results = run_checks(_passing_adb(), _config(), _info(battery_percent=15), logs)
+
+    battery = results[2]
+    assert battery.status is Status.FAIL
+    assert battery.log_path is None
+    assert battery.log_error == (
+        "Log capture failed because the log file could not be written."
+    )
+    assert list(logs.glob("*.log")) == []
+    assert results[3].status is Status.PASS
+
+
+def test_failed_removal_of_a_partial_log_is_ignored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logs = tmp_path / "logs"
+
+    def fail_after_a_partial_write(self: Path, *_args: object, **_kwargs: object) -> int:
+        self.write_bytes(b"partial")
+        raise OSError("disk full")
+
+    def fail_unlink(self: Path, missing_ok: bool = False) -> None:
+        raise OSError("busy")
+
+    monkeypatch.setattr(Path, "write_text", fail_after_a_partial_write)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    results = run_checks(_passing_adb(), _config(), _info(battery_percent=15), logs)
+
+    battery = results[2]
+    assert battery.status is Status.FAIL
+    assert battery.log_path is None
+    assert battery.log_error == (
+        "Log capture failed because the log file could not be written."
+    )
+    assert results[3].status is Status.PASS
+    saved = list(logs.glob("*.log"))
+    assert len(saved) == 1
+    assert saved[0].read_bytes() == b"partial"
 
 
 def test_logcat_failure_keeps_the_original_failure(tmp_path: Path) -> None:

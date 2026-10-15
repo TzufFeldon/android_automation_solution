@@ -151,6 +151,40 @@ def test_offline_device_names_the_serial_and_state(
     assert "USB debugging" not in message
 
 
+def test_unauthorized_and_offline_corrections_are_joined(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tunauthorized", f"{_OTHER}\toffline"),
+    )
+
+    with pytest.raises(AdbError, match="none is ready") as caught:
+        client.select_device(None)
+
+    assert str(caught.value) == (
+        "Android devices are connected but none is ready: "
+        f"{_SERIAL} (unauthorized), {_OTHER} (offline); "
+        "accept the USB debugging prompt on the device, or "
+        "reconnect a device that is offline."
+    )
+
+
+def test_other_device_state_uses_the_generic_reconnect_sentence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _calls = _client(monkeypatch, _devices(f"{_SERIAL}\trecovery"))
+
+    with pytest.raises(AdbError, match="none is ready") as caught:
+        client.select_device(None)
+
+    assert str(caught.value) == (
+        "Android devices are connected but none is ready: "
+        f"{_SERIAL} (recovery); reconnect the device and confirm that "
+        "adb devices shows state device."
+    )
+
+
 def test_several_ready_devices_ask_for_device_id_without_a_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -206,6 +240,18 @@ def test_prompt_accepts_a_serial_after_an_invalid_choice(
 
     captured = capsys.readouterr()
     assert captured.err.count("Enter a number from 1-2, or a serial from the list.") == 2
+
+
+def test_prompt_treats_a_number_as_an_index_when_it_is_also_a_serial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tdevice", "1\tdevice"),
+    )
+    _terminal(monkeypatch, ["1\n"])
+
+    assert client.select_device(None) == _SERIAL
 
 
 def test_prompt_without_a_choice_is_an_error(
@@ -417,6 +463,21 @@ def test_one_timed_out_property_does_not_drop_the_others(
     assert info.android_version is None
     assert info.model == "Pixel 7"
     assert info.battery_percent == 86
+    assert len(calls) == 4
+
+
+def test_non_timeout_adb_error_while_reading_device_info_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, calls = _client(
+        monkeypatch,
+        _info(battery=AdbError("adb is not available")),
+    )
+
+    with pytest.raises(AdbError, match="adb is not available") as caught:
+        client.read_device_info(_SERIAL)
+
+    assert caught.value.timed_out is False
     assert len(calls) == 4
 
 

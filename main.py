@@ -26,15 +26,17 @@ def main(argv: list[str] | None = None) -> int:
     adb = AdbClient()
     selected = config.device_id
     last_code: int | None = None
+    announce = True
     while True:
         try:
-            code, serial = _run_once(adb, config, args, selected)
+            code, serial = _run_once(adb, config, args, selected, announce=announce)
         except KeyboardInterrupt:
             return _stop(last_code)
         if code == 2 or config.interval_seconds is None:
             return code
         last_code = code
         selected = serial
+        announce = False
         try:
             time.sleep(config.interval_seconds)
         except KeyboardInterrupt:
@@ -46,10 +48,13 @@ def _run_once(
     config: AppConfig,
     args: argparse.Namespace,
     selected: str | None,
+    *,
+    announce: bool,
 ) -> tuple[int, str | None]:
     try:
         serial = adb.select_device(selected)
-        print(f"Connected device: {serial}", flush=True)
+        if announce:
+            print(f"Connected device: {serial}", flush=True)
         info = adb.read_device_info(serial)
     except AdbError as exc:
         print(exc, file=sys.stderr)

@@ -388,7 +388,7 @@ def test_interval_repeats_until_stopped(
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 0
     assert sleeps == [30, 30]
-    assert captured.out.count("Connected device: emulator-5554\n") == 2
+    assert captured.out.count("Connected device: emulator-5554\n") == 1
     assert len(_RUN_LINE.findall(captured.out)) == 2
     assert captured.out.count("Overall: PASS") == 2
     assert captured.err == "Stopped.\n"

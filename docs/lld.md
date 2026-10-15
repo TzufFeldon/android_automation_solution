@@ -23,9 +23,10 @@ Module behavior behind the [high-level design](hld.md). Names below match the co
 ```text
 load_config(args.config)          ConfigError → stderr, return 2
 selected = device_id
+announce = true
 loop:
   select_device(selected)         AdbError    → stderr, return 2
-  print Connected device: {serial}
+  print Connected device: {serial}   only while announce is true
   read_device_info(...)
   run_checks(...)
   write_report(...)               ReportError → stderr, return 2
@@ -33,12 +34,13 @@ loop:
   code = 1 if any Status.FAIL else 0
   interval_seconds is None        return code
   selected = serial from this pass
+  announce = false
   time.sleep(interval_seconds)    KeyboardInterrupt → stop
 ```
 
 `SKIP` does not count as failed. The process entry point is `raise SystemExit(main())`.
 
-`interval_seconds` absent or JSON `null` is one pass. A set value repeats from device selection. Sleep starts only after a pass that returned `0` or `1`. Both report paths are overwritten on each completed pass. Later passes pass the first serial into `select_device`, so a terminal is asked once per process.
+`interval_seconds` absent or JSON `null` is one pass. A set value repeats from device selection. Sleep starts only after a pass that returned `0` or `1`. Both report paths are overwritten on each completed pass. Later passes pass the first serial into `select_device`, so a terminal is asked once per process. `Connected device: {serial}` is printed once, after that first successful selection.
 
 Ctrl+C during a pass or during sleep calls `_stop`. When a pass has already returned `0` or `1`, stderr is `Stopped.` and that code is returned. When none has, stderr is `Stopped before a report was written.` and the code is `2`. A `KeyboardInterrupt` does not print a traceback.
 
