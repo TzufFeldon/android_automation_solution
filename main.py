@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from android_runner.adb import AdbClient, AdbError
@@ -48,6 +49,7 @@ def _run_once(
 ) -> tuple[int, str | None]:
     try:
         serial = adb.select_device(selected)
+        print(f"Connected device: {serial}", flush=True)
         info = adb.read_device_info(serial)
     except AdbError as exc:
         print(exc, file=sys.stderr)
@@ -57,14 +59,18 @@ def _run_once(
     results = run_checks(adb, config, info, logs_dir)
     report_path = Path(args.report)
     json_path = json_report_path(report_path)
+    ran_at = datetime.now()
     try:
-        write_report(report_path, info, results)
+        write_report(report_path, info, results, ran_at=ran_at)
     except ReportError as exc:
         print(exc, file=sys.stderr)
         return 2, None
     failed = sum(result.status is Status.FAIL for result in results)
     overall = "FAIL" if failed else "PASS"
-    print(f"Overall: {overall}; report written to {report_path} and {json_path}.")
+    print(
+        f"{ran_at:%Y-%m-%d %H:%M:%S} Overall: {overall}; "
+        f"report written to {report_path} and {json_path}."
+    )
     return (1 if failed else 0), serial
 
 

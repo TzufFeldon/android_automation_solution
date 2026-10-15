@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -202,8 +203,14 @@ def test_several_ready_devices_exit_2_without_a_report(
     assert not (tmp_path / "report.txt").exists()
 
 
+_RUN_LINE = re.compile(
+    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Overall: (?:PASS|FAIL); "
+)
+
+
 def test_passing_run_exits_0_and_writes_the_report(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = ScriptedClient(_info())
@@ -214,8 +221,12 @@ def test_passing_run_exits_0_and_writes_the_report(
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     payload = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    captured = capsys.readouterr()
     assert code == 0
     assert client.device_id == "emulator-5554"
+    assert captured.out.startswith("Connected device: emulator-5554\n")
+    assert _RUN_LINE.search(captured.out)
+    assert report.startswith("Android Automation Report: emulator-5554\n")
     assert "Overall: PASS" in report
     assert "Device ID: emulator-5554" in report
     assert "Passed: 9" in report
@@ -349,6 +360,8 @@ def test_terminal_choice_is_the_device_checked_in_that_run(
     assert "Device ID: emulator-5556" in report
     assert "emulator-5554" not in report
     assert "Choose a device [1-2]: " in captured.err
+    assert "Connected device: emulator-5556\n" in captured.out
+    assert _RUN_LINE.search(captured.out)
     assert "Overall: PASS" in captured.out
 
 
@@ -375,6 +388,8 @@ def test_interval_repeats_until_stopped(
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 0
     assert sleeps == [30, 30]
+    assert captured.out.count("Connected device: emulator-5554\n") == 2
+    assert len(_RUN_LINE.findall(captured.out)) == 2
     assert captured.out.count("Overall: PASS") == 2
     assert captured.err == "Stopped.\n"
     assert "Traceback" not in captured.err
@@ -498,9 +513,8 @@ def test_interval_stops_when_a_later_pass_cannot_start(
             super().__init__(_info())
             self.selections = 0
 
-        def select_device(self, device_id: str | None) -> str:
+        def select_device(self, _device_id: str | None) -> str:
             self.selections += 1
-            self.device_id = device_id
             if self.selections == 2:
                 raise AdbError("No Android device or emulator is connected.")
             return self.info.serial

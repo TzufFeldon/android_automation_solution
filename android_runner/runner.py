@@ -380,8 +380,8 @@ def _has_default_route(text: str) -> bool:
     """True when a usable ``default`` route exists.
 
     Android keeps that route in a per-network table, so ``ip route`` alone
-    misses it. ``default dev dummy0`` is the unreachable placeholder and
-    does not count.
+    misses it. A ``default`` line that contains ``dummy0`` is the unreachable
+    placeholder and does not count.
     """
     for raw_line in text.splitlines():
         tokens = raw_line.split()

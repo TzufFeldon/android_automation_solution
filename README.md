@@ -55,8 +55,8 @@ The nine checks run in this order:
 2. **Android version.** The major version from `ro.build.version.release` is at least the minimum.
 3. **Battery level.** The percent from `dumpsys battery` is above the minimum.
 4. **Free storage.** Available space from `df -k /data` is above `minimum_free_storage_mb`. The value is whole mebibytes, truncated toward zero.
-5. **Network.** `ip route show table all` prints a `default` route other than the `dummy0` placeholder. A missing route means the device cannot reach other networks.
-6. **Screen state.** `dumpsys power` reports wakefulness `Awake`. When that line is absent, `mScreenOn=true` passes. The screen is not unlocked or turned on.
+5. **Network.** `ip route show table all` prints a line whose first field is `default` and that does not contain `dummy0`. A missing route means the device cannot reach other networks.
+6. **Screen state.** `dumpsys power` reports wakefulness `Awake`. When that line is absent, `mScreenOn=true` passes. The tool does not unlock the screen or turn it on.
 7. **Application installation.** `pm path <package>` prints a line that starts with `package:`.
 8. **Launch application.** `monkey` with category `android.intent.category.LAUNCHER` exits 0, and the output does not contain `No activities found` or `monkey aborted`.
 9. **Foreground activity.** The first `topResumedActivity` belongs to the configured package. When that marker is absent, the first `mResumedActivity` is used.
@@ -122,7 +122,7 @@ Assumptions:
 - A missing battery `scale`, or `scale: 100`, uses `level` as the percent. Any other positive scale uses `round(level * 100 / scale)`. A result outside 0 through 100 is unreadable.
 - The saved log starts at the device clock reading taken before that check, and is cut to 1 MB when it is still too large. Installation, launch, and foreground logs also keep the package and crash blocks.
 - Free storage is the `Available` column of `df -k /data`, in 1024-byte blocks, divided by 1024 and truncated. A missing column is unreadable.
-- Network passes when a routing line starts with `default`. The tool does not open a connection.
+- Network passes when a routing line starts with `default` and does not contain `dummy0`. The tool does not open a connection.
 - Screen state passes for wakefulness `Awake`, or for `mScreenOn=true` when no wakefulness line is present. `Asleep`, `Dozing`, and `Dreaming` fail. Numeric wakefulness `0` through `3` uses the same names.
 - `device_id` must match the serial exactly. An existing `report.txt` and `report.json` are overwritten.
 
@@ -133,8 +133,9 @@ Assumptions:
 ## Sample report
 
 ```text
-Android Automation Report
-=========================
+Android Automation Report: emulator-5554
+========================================
+Run: 2026-10-15 14:33:07
 
 Device
 ------
@@ -142,7 +143,7 @@ Device ID: emulator-5554
 Android version: 14
 Model: sdk_gphone64_arm64
 Manufacturer: Google
-Battery: 86%
+Battery: 15%
 
 Checks
 ------
@@ -181,13 +182,14 @@ Overall: FAIL
 
 ```json
 {
+  "ran_at": "2026-10-15 14:33:07",
   "device": {
     "id": "emulator-5554",
     "android_version": "14",
     "android_major": 14,
     "model": "sdk_gphone64_arm64",
     "manufacturer": "Google",
-    "battery_percent": 86
+    "battery_percent": 15
   },
   "checks": [
     {

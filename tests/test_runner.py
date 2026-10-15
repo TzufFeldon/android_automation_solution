@@ -37,7 +37,6 @@ class FakeAdb:
     ) -> None:
         self.responses = responses
         self.calls: list[tuple[object, ...]] = []
-        self.logcat_text = logcat_text
         self.logcat_error = logcat_error
         self.log_texts = [logcat_text]
         self.log_time = log_time

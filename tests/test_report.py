@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -15,9 +16,12 @@ from android_runner.report import (
 )
 from android_runner.runner import CheckResult, Status
 
+_RAN_AT = datetime(2026, 10, 15, 14, 33, 7)
+
 _SAMPLE = """\
-Android Automation Report
-=========================
+Android Automation Report: emulator-5554
+========================================
+Run: 2026-10-15 14:33:07
 
 Device
 ------
@@ -110,7 +114,7 @@ def _sample_results() -> list[CheckResult]:
 
 
 def test_sample_report_matches_the_fixed_layout() -> None:
-    text = render_report(_info(), _sample_results())
+    text = render_report(_info(), _sample_results(), ran_at=_RAN_AT)
 
     assert text == _SAMPLE
     assert text.count("Device ID:") == 1
@@ -233,8 +237,9 @@ def test_write_report_overwrites_and_creates_parent_directories(tmp_path: Path) 
 
 
 def test_json_report_matches_the_text_totals_and_log_paths() -> None:
-    payload = json.loads(render_json(_info(), _sample_results()))
+    payload = json.loads(render_json(_info(), _sample_results(), ran_at=_RAN_AT))
 
+    assert payload["ran_at"] == "2026-10-15 14:33:07"
     assert payload["device"] == {
         "id": "emulator-5554",
         "android_version": "14",

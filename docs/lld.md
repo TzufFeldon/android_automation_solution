@@ -25,10 +25,11 @@ load_config(args.config)          ConfigError → stderr, return 2
 selected = device_id
 loop:
   select_device(selected)         AdbError    → stderr, return 2
+  print Connected device: {serial}
   read_device_info(...)
   run_checks(...)
   write_report(...)               ReportError → stderr, return 2
-  print overall line and both paths
+  print local YYYY-MM-DD HH:MM:SS, overall line, and both paths
   code = 1 if any Status.FAIL else 0
   interval_seconds is None        return code
   selected = serial from this pass
@@ -160,7 +161,7 @@ Uses `DeviceInfo.battery_percent`. Comparison is strict.
 
 ### Network
 
-`adb shell ip route show table all`. Timeout: `The network check timed out.` A non-zero exit or any other `AdbError`: `The network check failed.` Exit 0 with a line whose first field is `default`, ignoring `default dev dummy0`: `PASS`, `A default network route is present.` Exit 0 without such a line, including empty stdout and a table that contains only the `dummy0` placeholder: `FAIL`, `No default network route is present, so the device cannot reach other networks.`
+`adb shell ip route show table all`. Timeout: `The network check timed out.` A non-zero exit or any other `AdbError`: `The network check failed.` Exit 0 with a line whose first field is `default` and that does not contain `dummy0`: `PASS`, `A default network route is present.` Exit 0 without such a line, including empty stdout and a table that contains only `default dev dummy0`: `FAIL`, `No default network route is present, so the device cannot reach other networks.`
 
 ### Screen state
 
@@ -222,8 +223,9 @@ The timestamp is local `datetime.now()` at write time. Two failures in the same 
 `render_report` always ends with a newline. Layout:
 
 ```text
-Android Automation Report
-=========================
+Android Automation Report: {serial}
+{= repeated to the title length}
+Run: {local YYYY-MM-DD HH:MM:SS}
 
 Device
 ------
@@ -256,6 +258,7 @@ Empty string and `None` both render as `unknown` for text fields.
 `render_json` is the same pass as JSON, including the trailing newline. Keys stay in this order:
 
 ```text
+ran_at                  local YYYY-MM-DD HH:MM:SS
 device.id
 device.android_version
 device.android_major

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from android_runner.adb import DeviceInfo
@@ -26,12 +27,22 @@ def json_report_path(path: str | Path) -> Path:
     return sibling
 
 
-def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
-    """Report text, including the trailing newline."""
+def render_report(
+    info: DeviceInfo,
+    results: list[CheckResult],
+    *,
+    ran_at: datetime | None = None,
+) -> str:
+    """Report text, including the trailing newline.
+
+    The title names the connected serial. ``Run`` is local time with seconds.
+    """
     passed, failed, skipped = _counts(results)
+    title = f"Android Automation Report: {info.serial}"
     lines = [
-        "Android Automation Report",
-        "=========================",
+        title,
+        "=" * len(title),
+        f"Run: {_stamp(ran_at)}",
         "",
         "Device",
         "------",
@@ -69,14 +80,21 @@ def render_report(info: DeviceInfo, results: list[CheckResult]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_json(info: DeviceInfo, results: list[CheckResult]) -> str:
+def render_json(
+    info: DeviceInfo,
+    results: list[CheckResult],
+    *,
+    ran_at: datetime | None = None,
+) -> str:
     """JSON report, including the trailing newline.
 
     Unread device fields stay ``null``. An empty string stays ``""``.
     ``log_path`` is a POSIX path when a failure log was saved.
+    ``ran_at`` is local ``YYYY-MM-DD HH:MM:SS``.
     """
     passed, failed, skipped = _counts(results)
     payload = {
+        "ran_at": _stamp(ran_at),
         "device": {
             "id": info.serial,
             "android_version": info.android_version,
@@ -109,16 +127,23 @@ def render_json(info: DeviceInfo, results: list[CheckResult]) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
-def write_report(path: str | Path, info: DeviceInfo, results: list[CheckResult]) -> None:
+def write_report(
+    path: str | Path,
+    info: DeviceInfo,
+    results: list[CheckResult],
+    *,
+    ran_at: datetime | None = None,
+) -> None:
     """Write the text report and the sibling JSON report.
 
     Parent directories are created. Raises ``ReportError`` when either path
-    cannot be written.
+    cannot be written. Text and JSON share one ``ran_at``.
     """
     report_path = Path(path)
     json_path = json_report_path(report_path)
-    text = render_report(info, results)
-    payload = render_json(info, results)
+    moment = datetime.now() if ran_at is None else ran_at
+    text = render_report(info, results, ran_at=moment)
+    payload = render_json(info, results, ran_at=moment)
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
     except IsADirectoryError:
@@ -146,6 +171,11 @@ def _write_text(path: Path, text: str) -> None:
         raise ReportError(
             f"Report file could not be written: {path} ({detail})."
         ) from None
+
+
+def _stamp(ran_at: datetime | None) -> str:
+    moment = datetime.now() if ran_at is None else ran_at
+    return f"{moment:%Y-%m-%d %H:%M:%S}"
 
 
 def _counts(results: list[CheckResult]) -> tuple[int, int, int]:
