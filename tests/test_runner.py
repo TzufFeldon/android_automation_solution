@@ -9,7 +9,7 @@ from android_runner.adb import AdbError, CommandResult, DeviceInfo
 from android_runner.config import AppConfig
 from android_runner.runner import Status, run_checks
 
-_PACKAGE = "com.example.demo"
+_PACKAGE = "com.android.settings"
 
 
 class _Clock:
@@ -89,7 +89,7 @@ def _passing_adb(
 ) -> FakeAdb:
     responses: dict[object, CommandResult | AdbError] = {
         ("echo", "hello"): _ok("hello\n"),
-        ("pm", "path", _PACKAGE): _ok("package:/data/app/com.example.demo/base.apk\n"),
+        ("pm", "path", _PACKAGE): _ok("package:/data/app/com.android.settings/base.apk\n"),
         ("launch", _PACKAGE): _ok("Events injected: 1\n"),
     }
     if overrides:

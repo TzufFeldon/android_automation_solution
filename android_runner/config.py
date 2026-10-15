@@ -135,7 +135,7 @@ def _require_package_name(value: object) -> str:
         shown = f"; got {value!r}" if len(value) <= 80 else ""
         raise ConfigError(
             "Configuration field 'package_name' must be an Android package name "
-            f"such as 'com.example.demo'{shown}."
+            f"such as 'com.android.settings'{shown}."
         )
     return value
 

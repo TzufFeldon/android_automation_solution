@@ -9,7 +9,7 @@ import pytest
 from android_runner.adb import AdbError, CommandResult, DeviceInfo
 from main import main
 
-_PACKAGE = "com.example.demo"
+_PACKAGE = "com.android.settings"
 
 
 class ScriptedClient:

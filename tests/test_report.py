@@ -28,10 +28,10 @@ Battery level: FAIL
     Battery level is 15%, which is not strictly above 20%.
     Log: logs/20261013-215301_battery_level.txt
 Application installation: FAIL
-    Package com.example.demo is not installed.
+    Package com.android.settings is not installed.
     Log: logs/20261013-215302_application_installation.txt
 Launch application: SKIP
-    Skipped because com.example.demo is not installed.
+    Skipped because com.android.settings is not installed.
 
 Totals
 ------
@@ -88,13 +88,13 @@ def _sample_results() -> list[CheckResult]:
         _result(
             "Application installation",
             Status.FAIL,
-            "Package com.example.demo is not installed.",
+            "Package com.android.settings is not installed.",
             Path("logs/20261013-215302_application_installation.txt"),
         ),
         _result(
             "Launch application",
             Status.SKIP,
-            "Skipped because com.example.demo is not installed.",
+            "Skipped because com.android.settings is not installed.",
         ),
     ]
 

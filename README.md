@@ -16,7 +16,7 @@ Edit `config.json` before running:
 
 ```json
 {
-  "package_name": "com.example.demo",
+  "package_name": "com.android.settings",
   "minimum_android_version": 10,
   "minimum_battery": 20
 }
@@ -24,7 +24,7 @@ Edit `config.json` before running:
 
 | Field | Meaning |
 | --- | --- |
-| `package_name` | Package name, for example `com.example.demo`. |
+| `package_name` | Package name, for example `com.android.settings`. |
 | `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as major version 8. |
 | `minimum_battery` | Integer from 0 through 100. The level must be strictly above this value. `100` always fails. |
 | `device_id` | Optional serial. Omit it, or set `null` or `""`, when only one device is ready. |
@@ -120,10 +120,10 @@ Battery level: FAIL
     Battery level is 15%, which is not strictly above 20%.
     Log: logs/20261013-215301_battery_level.txt
 Application installation: FAIL
-    Package com.example.demo is not installed.
+    Package com.android.settings is not installed.
     Log: logs/20261013-215302_application_installation.txt
 Launch application: SKIP
-    Skipped because com.example.demo is not installed.
+    Skipped because com.android.settings is not installed.
 
 Totals
 ------

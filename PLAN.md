@@ -91,7 +91,7 @@ Example `config.json`:
 
 ```json
 {
-  "package_name": "com.example.demo",
+  "package_name": "com.android.settings",
   "minimum_android_version": 10,
   "minimum_battery": 20
 }
@@ -99,7 +99,7 @@ Example `config.json`:
 
 Required fields:
 
-- `package_name`: an Android package name string, for example `com.example.demo`.
+- `package_name`: an Android package name string, for example `com.android.settings`.
 - `minimum_android_version`: an integer, the minimum Android version.
 - `minimum_battery`: an integer, the minimum battery percentage.
 
@@ -220,10 +220,10 @@ Battery level: FAIL
     Battery level is 15%, which is not strictly above 20%.
     Log: logs/20261013-215301_battery_level.txt
 Application installation: FAIL
-    Package com.example.demo is not installed.
+    Package com.android.settings is not installed.
     Log: logs/20261013-215302_application_installation.txt
 Launch application: SKIP
-    Skipped because com.example.demo is not installed.
+    Skipped because com.android.settings is not installed.
 
 Totals
 ------

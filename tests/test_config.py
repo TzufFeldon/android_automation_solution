@@ -8,7 +8,7 @@ import pytest
 from android_runner.config import AppConfig, ConfigError, load_config
 
 _VALID = {
-    "package_name": "com.example.demo",
+    "package_name": "com.android.settings",
     "minimum_android_version": 10,
     "minimum_battery": 20,
 }
@@ -34,7 +34,7 @@ def test_valid_config(tmp_path: Path) -> None:
     config = load_config(_write(tmp_path, _VALID))
 
     assert config == AppConfig(
-        package_name="com.example.demo",
+        package_name="com.android.settings",
         minimum_android_version=10,
         minimum_battery=20,
         device_id=None,
@@ -187,7 +187,7 @@ def test_invalid_utf8_is_rejected(tmp_path: Path) -> None:
 def test_shipped_config_loads() -> None:
     config = load_config(Path(__file__).resolve().parents[1] / "config.json")
 
-    assert config.package_name == "com.example.demo"
+    assert config.package_name == "com.android.settings"
     assert config.minimum_android_version == 10
     assert config.minimum_battery == 20
     assert config.device_id is None
@@ -196,7 +196,7 @@ def test_shipped_config_loads() -> None:
 def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
     config = load_config(str(_write(tmp_path, _VALID)))
 
-    assert config.package_name == "com.example.demo"
+    assert config.package_name == "com.android.settings"
 
 
 def test_package_name_may_contain_underscores_and_digits(tmp_path: Path) -> None:
@@ -263,7 +263,7 @@ def test_several_unknown_fields_are_all_named(tmp_path: Path) -> None:
         ("package_name", "com.", "Android package name"),
         ("package_name", ".com.example", "Android package name"),
         ("package_name", "com..example", "Android package name"),
-        ("package_name", "com.example.demo ", "Android package name"),
+        ("package_name", "com.android.settings ", "Android package name"),
         ("package_name", "1com.example", "Android package name"),
         ("device_id", "serial ", "whitespace"),
         ("device_id", "\nemulator", "whitespace"),

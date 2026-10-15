@@ -314,10 +314,10 @@ def test_one_timed_out_property_does_not_drop_the_others(
 
 
 def test_shell_returns_a_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    command = ("adb", "-s", _SERIAL, "shell", "pm", "path", "com.example.demo")
+    command = ("adb", "-s", _SERIAL, "shell", "pm", "path", "com.android.settings")
     client, _calls = _client(monkeypatch, {command: (1, "", "not found")})
 
-    result = client.shell(_SERIAL, "pm", "path", "com.example.demo")
+    result = client.shell(_SERIAL, "pm", "path", "com.android.settings")
 
     assert result.returncode == 1
     assert result.stderr == "not found"
@@ -333,14 +333,14 @@ def test_launch_package_uses_monkey_without_a_shell_string(
         "shell",
         "monkey",
         "-p",
-        "com.example.demo",
+        "com.android.settings",
         "-c",
         "android.intent.category.LAUNCHER",
         "1",
     )
     client, calls = _client(monkeypatch, {command: (0, "Events injected: 1\n", "")})
 
-    result = client.launch_package(_SERIAL, "com.example.demo")
+    result = client.launch_package(_SERIAL, "com.android.settings")
 
     assert result.returncode == 0
     assert calls == [list(command)]
