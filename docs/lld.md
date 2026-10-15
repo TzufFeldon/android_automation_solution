@@ -22,20 +22,22 @@ Module behavior behind the [high-level design](hld.md). Names below match the co
 
 ```text
 load_config(args.config)          ConfigError → stderr, return 2
+selected = device_id
 loop:
-  select_device(...)              AdbError    → stderr, return 2
+  select_device(selected)         AdbError    → stderr, return 2
   read_device_info(...)
   run_checks(...)
   write_report(...)               ReportError → stderr, return 2
   print overall line
   code = 1 if any Status.FAIL else 0
   interval_seconds is None        return code
+  selected = serial from this pass
   time.sleep(interval_seconds)    KeyboardInterrupt → stop
 ```
 
 `SKIP` does not count as failed. The process entry point is `raise SystemExit(main())`.
 
-`interval_seconds` absent or JSON `null` is one pass. A set value repeats from device selection. Sleep starts only after a pass that returned `0` or `1`. The report path is overwritten on each completed pass.
+`interval_seconds` absent or JSON `null` is one pass. A set value repeats from device selection. Sleep starts only after a pass that returned `0` or `1`. The report path is overwritten on each completed pass. Later passes pass the first serial into `select_device`, so a terminal is asked once per process.
 
 Ctrl+C during a pass or during sleep calls `_stop`. When a pass has already returned `0` or `1`, stderr is `Stopped.` and that code is returned. When none has, stderr is `Stopped before a report was written.` and the code is `2`. A `KeyboardInterrupt` does not print a traceback.
 
@@ -84,16 +86,21 @@ Unknown and missing keys are reported together, in one sentence. Unknown names a
 
 ### Selection
 
-`select_device(None)` and `select_device("")` call `_select_only_ready`:
+`select_device(None)` and `select_device("")` select a ready device:
 
 | Connected devices | Result |
 | --- | --- |
 | None | `No Android device or emulator is connected.` |
 | Rows exist, none in state `device` | Lists `serial (state)` and a correction for the states present. |
 | Exactly one `device` | That serial. |
-| More than one `device` | Names the ready serials and tells the caller to set `device_id`. |
+| More than one `device`, stdin is not a terminal | Names the ready serials and tells the caller to set `device_id`. |
+| More than one `device`, stdin is a terminal | Prints a numbered list of ready serials to stderr and reads one choice. |
 
 `unauthorized` adds “accept the USB debugging prompt on the device”. `offline` adds “reconnect a device that is offline”. Any other state, or a set with no specific hint, adds the generic reconnect sentence. Two or more hints are joined with commas and a final `or`.
+
+`_prompt_ready` lists only state `device`, in `adb devices` order. The choice may be a number from 1 through that count, or an exact serial. A token that is both a valid number and a serial is the number. Any other line prints `Enter a number from 1-N, or a serial from the list.` and asks again. EOF raises `AdbError`: `Several Android devices are ready and no choice was entered.`
+
+The choice is used for that call only. A later `select_device(None)` asks again. `device_id` never prompts, including on a terminal.
 
 `select_device(serial)` calls `_select_named`. The serial must match exactly.
 

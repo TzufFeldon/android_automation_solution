@@ -43,6 +43,22 @@ def _client(
     return AdbClient(), calls
 
 
+def _terminal(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> list[str]:
+    pending = list(lines)
+
+    class _Stdin:
+        def isatty(self) -> bool:
+            return True
+
+        def readline(self) -> str:
+            if not pending:
+                return ""
+            return pending.pop(0)
+
+    monkeypatch.setattr(adb_module.sys, "stdin", _Stdin())
+    return pending
+
+
 def _devices(*rows: str) -> dict[tuple[str, ...], object]:
     body = "List of devices attached\n" + "\n".join(rows) + "\n"
     return {("adb", "devices"): (0, body, "")}
@@ -135,13 +151,14 @@ def test_offline_device_names_the_serial_and_state(
     assert "USB debugging" not in message
 
 
-def test_several_ready_devices_ask_for_device_id(
+def test_several_ready_devices_ask_for_device_id_without_a_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, _calls = _client(
         monkeypatch,
         _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice", "ABC\tunauthorized"),
     )
+    monkeypatch.setattr(adb_module.sys.stdin, "isatty", lambda: False)
 
     with pytest.raises(AdbError, match="device_id in config.json") as caught:
         client.select_device(None)
@@ -153,6 +170,76 @@ def test_several_ready_devices_ask_for_device_id(
     )
 
 
+def test_several_ready_devices_prompt_on_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client, _calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice", "ABC\tunauthorized"),
+    )
+    _terminal(monkeypatch, ["2\n"])
+
+    assert client.select_device(None) == _OTHER
+
+    captured = capsys.readouterr()
+    assert captured.err == (
+        "Several Android devices are ready:\n"
+        f"  1. {_SERIAL}\n"
+        f"  2. {_OTHER}\n"
+        "Choose a device [1-2]: "
+    )
+    assert "ABC" not in captured.err
+
+
+def test_prompt_accepts_a_serial_after_an_invalid_choice(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client, _calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice"),
+    )
+    _terminal(monkeypatch, ["9\n", " \n", f"{_SERIAL}\n"])
+
+    assert client.select_device(None) == _SERIAL
+
+    captured = capsys.readouterr()
+    assert captured.err.count("Enter a number from 1-2, or a serial from the list.") == 2
+
+
+def test_prompt_without_a_choice_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice"),
+    )
+    _terminal(monkeypatch, [""])
+
+    with pytest.raises(AdbError, match="no choice was entered") as caught:
+        client.select_device(None)
+
+    assert "Traceback" not in str(caught.value)
+    assert "\n" not in str(caught.value)
+
+
+def test_each_prompt_is_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, calls = _client(
+        monkeypatch,
+        _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice"),
+    )
+    answers = _terminal(monkeypatch, ["1\n", "2\n"])
+
+    assert client.select_device(None) == _SERIAL
+    assert client.select_device(None) == _OTHER
+
+    assert answers == []
+    assert calls == [["adb", "devices"], ["adb", "devices"]]
+
+
 def test_device_id_selects_its_ready_device_among_others(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -160,6 +247,18 @@ def test_device_id_selects_its_ready_device_among_others(
         monkeypatch,
         _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\tdevice"),
     )
+
+    def forbid_read() -> str:
+        raise AssertionError("device_id prompted")
+
+    class _Stdin:
+        def isatty(self) -> bool:
+            return True
+
+        def readline(self) -> str:
+            return forbid_read()
+
+    monkeypatch.setattr(adb_module.sys, "stdin", _Stdin())
 
     assert client.select_device(_OTHER) == _OTHER
 

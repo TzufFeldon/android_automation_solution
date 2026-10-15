@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 
 TIMEOUT_SECONDS = 20
@@ -68,10 +69,18 @@ class AdbClient:
         return _parse_devices(result.stdout)
 
     def select_device(self, device_id: str | None) -> str:
-        """Return the serial to check. ``None`` or ``""`` selects the only ready device."""
+        """Return the serial to check.
+
+        ``None`` or ``""`` selects the only ready device. Several ready devices
+        prompt on a terminal. Without a terminal they raise ``AdbError``.
+        The choice is not stored.
+        """
         devices = self.list_devices()
         if device_id:
             return _select_named(device_id, devices)
+        ready = [record for record in devices if record.state == "device"]
+        if len(ready) > 1 and sys.stdin.isatty():
+            return _prompt_ready(ready)
         return _select_only_ready(devices)
 
     def read_device_info(self, serial: str) -> DeviceInfo:
@@ -221,6 +230,40 @@ def _select_only_ready(devices: list[DeviceRecord]) -> str:
             "device_id in config.json to one of these serials."
         )
     return ready[0].serial
+
+
+def _prompt_ready(ready: list[DeviceRecord]) -> str:
+    """Ask for a ready serial. A number wins when it is also a valid index."""
+    print("Several Android devices are ready:", file=sys.stderr)
+    for index, record in enumerate(ready, start=1):
+        print(f"  {index}. {record.serial}", file=sys.stderr)
+    span = f"1-{len(ready)}"
+    while True:
+        print(f"Choose a device [{span}]: ", file=sys.stderr, end="", flush=True)
+        answer = sys.stdin.readline()
+        if answer == "":
+            raise AdbError(
+                "Several Android devices are ready and no choice was entered."
+            )
+        selected = _match_choice(ready, answer.strip())
+        if selected is not None:
+            return selected
+        print(
+            f"Enter a number from {span}, or a serial from the list.",
+            file=sys.stderr,
+        )
+
+
+def _match_choice(ready: list[DeviceRecord], choice: str) -> str | None:
+    if choice.isdigit():
+        index = int(choice)
+        if 1 <= index <= len(ready):
+            return ready[index - 1].serial
+        return None
+    for record in ready:
+        if record.serial == choice:
+            return record.serial
+    return None
 
 
 def _describe(devices: list[DeviceRecord]) -> str:

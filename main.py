@@ -23,28 +23,35 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     adb = AdbClient()
+    selected = config.device_id
     last_code: int | None = None
     while True:
         try:
-            code = _run_once(adb, config, args)
+            code, serial = _run_once(adb, config, args, selected)
         except KeyboardInterrupt:
             return _stop(last_code)
         if code == 2 or config.interval_seconds is None:
             return code
         last_code = code
+        selected = serial
         try:
             time.sleep(config.interval_seconds)
         except KeyboardInterrupt:
             return _stop(last_code)
 
 
-def _run_once(adb: AdbClient, config: AppConfig, args: argparse.Namespace) -> int:
+def _run_once(
+    adb: AdbClient,
+    config: AppConfig,
+    args: argparse.Namespace,
+    selected: str | None,
+) -> tuple[int, str | None]:
     try:
-        serial = adb.select_device(config.device_id)
+        serial = adb.select_device(selected)
         info = adb.read_device_info(serial)
     except AdbError as exc:
         print(exc, file=sys.stderr)
-        return 2
+        return 2, None
 
     logs_dir = Path(args.logs)
     results = run_checks(adb, config, info, logs_dir)
@@ -53,11 +60,11 @@ def _run_once(adb: AdbClient, config: AppConfig, args: argparse.Namespace) -> in
         write_report(report_path, info, results)
     except ReportError as exc:
         print(exc, file=sys.stderr)
-        return 2
+        return 2, None
     failed = sum(result.status is Status.FAIL for result in results)
     overall = "FAIL" if failed else "PASS"
     print(f"Overall: {overall}; report written to {report_path}.")
-    return 1 if failed else 0
+    return (1 if failed else 0), serial
 
 
 def _stop(last_code: int | None) -> int:

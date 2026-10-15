@@ -164,6 +164,7 @@ def test_several_ready_devices_exit_2_without_a_report(
 
     monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
     monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
+    monkeypatch.setattr("android_runner.adb.sys.stdin.isatty", lambda: False)
     config = _write_config(tmp_path)
 
     code = main(_argv(config, tmp_path))
@@ -244,23 +245,67 @@ def test_report_directory_exits_2_without_a_traceback(
     assert "Traceback" not in captured.out
 
 
-def test_one_pass_does_not_sleep(
+def test_terminal_choice_is_the_device_checked_in_that_run(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = ScriptedClient(_info())
-    monkeypatch.setattr("main.AdbClient", lambda: client)
+    chosen = "emulator-5556"
+    serials: list[str] = []
 
-    def forbid_sleep(_seconds: float) -> None:
-        raise AssertionError("one-pass run slept")
+    def fake_which(name: str) -> str:
+        assert name == "adb"
+        return "/usr/bin/adb"
 
-    monkeypatch.setattr("main.time.sleep", forbid_sleep)
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args == ["adb", "devices"]:
+            stdout = (
+                "List of devices attached\n"
+                "emulator-5554\tdevice\n"
+                "emulator-5556\tdevice\n"
+            )
+            return subprocess.CompletedProcess(args, 0, stdout, "")
+        serial = args[2]
+        serials.append(serial)
+        if args[4:6] == ["getprop", "ro.build.version.release"]:
+            return subprocess.CompletedProcess(args, 0, "14\n", "")
+        if args[4:6] == ["getprop", "ro.product.model"]:
+            return subprocess.CompletedProcess(args, 0, "sdk\n", "")
+        if args[4:6] == ["getprop", "ro.product.manufacturer"]:
+            return subprocess.CompletedProcess(args, 0, "Google\n", "")
+        if args[4:6] == ["dumpsys", "battery"]:
+            return subprocess.CompletedProcess(args, 0, "  level: 86\n  scale: 100\n", "")
+        if args[4:6] == ["echo", "hello"]:
+            return subprocess.CompletedProcess(args, 0, "hello\n", "")
+        if args[4:6] == ["pm", "path"]:
+            return subprocess.CompletedProcess(args, 0, f"package:{_PACKAGE}\n", "")
+        if args[4] == "monkey":
+            return subprocess.CompletedProcess(args, 0, "Events injected: 1\n", "")
+        raise AssertionError(args)
+
+    class _Stdin:
+        def isatty(self) -> bool:
+            return True
+
+        def readline(self) -> str:
+            return "2\n"
+
+    monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
+    monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
+    monkeypatch.setattr("android_runner.adb.sys.stdin", _Stdin())
     config = _write_config(tmp_path)
 
     code = main(_argv(config, tmp_path))
 
+    captured = capsys.readouterr()
+    report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 0
-    assert client.calls.count(("shell", "emulator-5554", ("echo", "hello"))) == 1
+    assert serials
+    assert set(serials) == {chosen}
+    assert "Device ID: emulator-5556" in report
+    assert "emulator-5554" not in report
+    assert "Choose a device [1-2]: " in captured.err
+    assert "Overall: PASS" in captured.out
 
 
 def test_interval_repeats_until_stopped(
@@ -332,6 +377,51 @@ def test_interval_keeps_the_last_completed_exit_code(
     assert "Battery level is 15%, which is lower than 20%." in report
 
 
+def test_interval_reuses_the_serial_chosen_on_the_first_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Choosing(ScriptedClient):
+        def __init__(self) -> None:
+            super().__init__(_info())
+            self.ids: list[str | None] = []
+
+        def select_device(self, device_id: str | None) -> str:
+            self.ids.append(device_id)
+            if device_id is None:
+                return "emulator-5556"
+            return device_id
+
+        def read_device_info(self, serial: str) -> DeviceInfo:
+            info = _info()
+            return DeviceInfo(
+                serial=serial,
+                android_version=info.android_version,
+                android_major=info.android_major,
+                model=info.model,
+                manufacturer=info.manufacturer,
+                battery_percent=info.battery_percent,
+            )
+
+    client = Choosing()
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+    passes = 0
+
+    def stop_after_two(_seconds: float) -> None:
+        nonlocal passes
+        passes += 1
+        if passes == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("main.time.sleep", stop_after_two)
+    config = _write_config(tmp_path, interval_seconds=30)
+
+    code = main(_argv(config, tmp_path))
+
+    assert code == 0
+    assert client.ids == [None, "emulator-5556"]
+
+
 def test_interrupt_before_the_first_report_exits_2(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -372,11 +462,9 @@ def test_interval_stops_when_a_later_pass_cannot_start(
 
     client = Disconnects()
     monkeypatch.setattr("main.AdbClient", lambda: client)
-    slept = False
 
     def record_sleep(_seconds: float) -> None:
-        nonlocal slept
-        slept = True
+        return None
 
     monkeypatch.setattr("main.time.sleep", record_sleep)
     config = _write_config(tmp_path, interval_seconds=30)
@@ -385,11 +473,29 @@ def test_interval_stops_when_a_later_pass_cannot_start(
 
     captured = capsys.readouterr()
     assert code == 2
-    assert slept
     assert "Overall: PASS" in captured.out
     assert "No Android device or emulator is connected." in captured.err
     assert "Stopped." not in captured.err
     assert (tmp_path / "report.txt").exists()
+
+
+def test_one_pass_does_not_sleep(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = ScriptedClient(_info())
+    monkeypatch.setattr("main.AdbClient", lambda: client)
+
+    def forbid_sleep(_seconds: float) -> None:
+        raise AssertionError("one-pass run slept")
+
+    monkeypatch.setattr("main.time.sleep", forbid_sleep)
+    config = _write_config(tmp_path)
+
+    code = main(_argv(config, tmp_path))
+
+    assert code == 0
+    assert client.calls.count(("shell", "emulator-5554", ("echo", "hello"))) == 1
 
 
 def test_unexpected_error_propagates(

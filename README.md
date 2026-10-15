@@ -31,8 +31,8 @@ Edit `config.json`:
 | `package_name` | Package name, such as `com.android.settings`. |
 | `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as 8. |
 | `minimum_battery` | Integer from 0 through 100. The level must be greater than this value. Equal fails, including 100 against 100. |
-| `device_id` | Optional serial. Omit it, or set `null` or `""`, when only one device is ready. Leading or trailing spaces are rejected. |
-| `interval_seconds` | Optional wait between passes, an integer from 1 through 86400. Omit it or set `null` for a single pass. Ctrl+C stops after the last completed pass and keeps that exit code. |
+| `device_id` | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a numbered list when a terminal has several. Leading or trailing spaces are rejected. |
+| `interval_seconds` | Optional wait between passes, an integer from 1 through 86400. Omit it or set `null` for a single pass. Ctrl+C stops after the last completed pass and keeps that exit code. Later passes keep the serial chosen on the first pass. |
 
 Floats, booleans, and unknown keys are rejected. Missing fields are named in the error.
 
@@ -87,9 +87,9 @@ tests/                  pytest, with subprocess mocked
 logs/                   Failure logs from a run
 ```
 
-- Configuration is validated before any ADB call. With `interval_seconds`, each pass selects the device again and overwrites `report.txt`. A pass that cannot start or cannot write the report stops the loop with exit 2.
+- Configuration is validated before any ADB call. With `interval_seconds`, each pass overwrites `report.txt`. A pass that cannot start or cannot write the report stops the loop with exit 2.
 - ADB commands are argument lists. `shell=True` is not used. Each call times out after 20 seconds.
-- Device selection does not prompt. Several ready devices require `device_id`.
+- Several ready devices prompt on a terminal once per process. Later passes of an interval run keep that serial. `device_id` skips the prompt. Without a terminal the run exits 2 and names the serials.
 - A failed check does not stop the others. A failed log capture leaves the check as `FAIL` and adds `Log capture failed` to the report.
 - Launch success is the `monkey` result. The tool does not unlock the screen or check the foreground app.
 
@@ -101,7 +101,7 @@ logs/                   Failure logs from a run
 | 1 | At least one check failed. | Written |
 | 2 | Bad configuration, missing `adb`, no selectable device, or the report cannot be written. | Not written |
 
-Exit 2 prints one sentence to stderr, without a traceback. The message names only states that are connected: accept the USB debugging prompt for `unauthorized`, reconnect for `offline`. Several ready devices print:
+Exit 2 prints one sentence to stderr, without a traceback. The message names only states that are connected: accept the USB debugging prompt for `unauthorized`, reconnect for `offline`. On a terminal, several ready devices print a numbered list and wait for a choice. Without a terminal they print:
 
 ```text
 More than one Android device is ready (SERIAL, SERIAL); set device_id in config.json to one of these serials.

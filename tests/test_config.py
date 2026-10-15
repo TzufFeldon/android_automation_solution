@@ -212,6 +212,7 @@ def test_shipped_config_loads() -> None:
     assert config.minimum_android_version == 10
     assert config.minimum_battery == 20
     assert config.device_id is None
+    assert config.interval_seconds == 120
 
 
 def test_load_config_accepts_a_string_path(tmp_path: Path) -> None:
