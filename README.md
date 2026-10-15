@@ -10,6 +10,17 @@ Python 3.12 or newer. The program uses the standard library only.
 - [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) on `PATH`. Check with `adb version`.
 - A device or emulator with USB debugging enabled and this computer authorized. `adb devices` shows the state `device`.
 
+### macOS and Windows
+
+Install Python 3.12 or newer from [python.org](https://www.python.org/downloads/). On macOS the command is `python3`. On Windows, select "Add python.exe to PATH" during setup, and the command is `python`.
+
+**Platform-Tools.** Put `adb` on `PATH`, then open a new terminal and run `adb version`.
+
+- macOS: `brew install --cask android-platform-tools`, or unzip the platform-tools download and add that directory to `PATH` in the shell profile.
+- Windows: unzip the platform-tools download and add that folder to the user `Path` variable. If the device does not appear, or stays unauthorized after the USB debugging prompt, install the phone maker's USB driver or the [Google USB Driver](https://developer.android.com/studio/run/win-usb).
+
+An emulator needs no USB driver on either system.
+
 ## Configuration
 
 Edit `config.json` before running:
@@ -44,6 +55,10 @@ Set `device_id` to one of those serials and run again. There is no prompt.
 From the project root:
 
 ```bash
+# macOS
+python3 main.py
+
+# Windows
 python main.py
 ```
 
@@ -62,8 +77,13 @@ Launch runs `monkey` with category `android.intent.category.LAUNCHER`. It does n
 ## Tests
 
 ```bash
+# macOS
+python3 -m pip install pytest
+python3 -m pytest
+
+# Windows
 python -m pip install pytest
-pytest
+python -m pytest
 ```
 
 The tests mock `subprocess.run`. They cover configuration, device selection, a passing run, a failed check, log capture, report totals, and exit codes 0, 1, and 2. No device or `adb` binary is required.
