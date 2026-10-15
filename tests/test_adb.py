@@ -118,6 +118,8 @@ def test_unauthorized_device_names_the_serial_and_state(
         client.select_device("")
 
     message = str(caught.value)
+    assert "accept the USB debugging prompt" in message
+    assert "offline" not in message
     assert "Traceback" not in message
     assert "\n" not in message
 
@@ -127,8 +129,12 @@ def test_offline_device_names_the_serial_and_state(
 ) -> None:
     client, _calls = _client(monkeypatch, _devices(f"{_SERIAL}\toffline"))
 
-    with pytest.raises(AdbError, match=rf"{_SERIAL} \(offline\)"):
+    with pytest.raises(AdbError, match=rf"{_SERIAL} \(offline\)") as caught:
         client.select_device(None)
+
+    message = str(caught.value)
+    assert "reconnect a device that is offline" in message
+    assert "USB debugging" not in message
 
 
 def test_several_ready_devices_ask_for_device_id(
@@ -143,9 +149,10 @@ def test_several_ready_devices_ask_for_device_id(
         client.select_device(None)
 
     message = str(caught.value)
-    assert _SERIAL in message
-    assert _OTHER in message
-    assert "ABC" not in message
+    assert message == (
+        "More than one Android device is ready "
+        f"({_SERIAL}, {_OTHER}); set device_id in config.json to one of these serials."
+    )
 
 
 def test_device_id_selects_its_ready_device_among_others(
@@ -167,8 +174,11 @@ def test_device_id_does_not_fall_back_to_a_different_ready_device(
         _devices(f"{_SERIAL}\tdevice", f"{_OTHER}\toffline"),
     )
 
-    with pytest.raises(AdbError, match=f"{_OTHER} is connected with state offline"):
+    with pytest.raises(AdbError, match=f"{_OTHER} is connected with state offline") as caught:
         client.select_device(_OTHER)
+
+    assert "reconnect a device that is offline" in str(caught.value)
+    assert "USB debugging" not in str(caught.value)
 
 
 def test_missing_device_id_lists_the_connected_devices(

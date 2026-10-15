@@ -4,19 +4,20 @@ This document is the implementation plan. It maps the Android Python Automation 
 
 The tool is a Python command-line program. It reads `config.json`, selects one Android device through ADB, runs five checks, saves `adb logcat -d` when a check fails, and writes `report.txt`. Unit tests run without a physical device.
 
-Code for each part starts only after that part is approved. The empty project skeleton already exists.
+The repository contains the working program, tests, and CI workflow described here.
 
 ## 1. Repository state
 
-The project root is this repository. The assignment diagram names that root `android_automation_solution/`; the files live here, not in a nested folder.
+The assignment calls the layout a suggested project structure and labels the root `android_automation_solution/`. That label is the directory a reviewer opens. It is not a folder that must be nested inside another directory.
 
-Current skeleton:
+This repository is that directory. Cloning it shows the diagram's files at the top level. There is no nested `android_automation_solution/` directory, and adding one would hide `main.py` one level deeper than the diagram.
+
+The diagram and this root contain the same required paths:
 
 ```text
 main.py
 config.json
 android_runner/
-    __init__.py
     adb.py
     config.py
     runner.py
@@ -26,7 +27,7 @@ README.md
 logs/
 ```
 
-`android_runner/__init__.py` is an empty package marker so `android_runner` imports as a package. `tests/.gitkeep` and `logs/.gitkeep` keep those directories in git. `.gitignore` ignores generated files inside `logs/` and ignores `report.txt`.
+`android_runner/__init__.py` is an empty package marker so `android_runner` imports as a package. It is not drawn in the diagram. `pyproject.toml` and `.github/workflows/ci.yml` are also outside the diagram; both are described in section 2. `tests/.gitkeep` and `logs/.gitkeep` keep those directories in git. `.gitignore` ignores generated files inside `logs/` and ignores `report.txt`.
 
 Every source file, comment, configuration value, report, and document is written in English.
 
@@ -47,9 +48,9 @@ Every source file, comment, configuration value, report, and document is written
 
 `logs/` is created by the program when a check fails. Generated log files are not committed.
 
-CI is not in the assignment PDF. It is included because it is part of the project requirements.
+`.github/workflows/ci.yml` is not in the assignment diagram. It is an extra file, and it is part of this repository. Section 4.10 is the contract for that file. The file already in the repository matches that contract: Ubuntu, Python 3.12, `pytest`, on every push and pull request, with no ADB install and no device. The PDF deliverables stay the required set: source, `config.json`, tests, `README.md`, a `report.txt` from a run, and `logs/` when a check fails.
 
-Optional assignment extensions stay out of the code. The README will list them as future work: interval runs, logcat filtering, a JSON or HTML report, and extra checks such as storage, network, foreground activity, and screen state. Selecting a device with `device_id` is in scope, because it is part of multiple-device handling.
+Optional assignment extensions stay out of the code. The README lists them as future work: interval runs, logcat filtering, a JSON or HTML report, and extra checks such as storage, network, foreground activity, and screen state. Selecting a device with `device_id` is in scope, because it is part of multiple-device handling.
 
 ## 3. Execution flow
 
@@ -133,14 +134,14 @@ Continue only with a device whose state is `device`.
 | --- | --- |
 | `adb` is not on `PATH`, or the launch raises `FileNotFoundError` | Explain that Android SDK Platform-Tools must be installed and that `platform-tools` must be on `PATH`. Tell the user to verify with `adb version`. |
 | No device lines | `No Android device or emulator is connected.` |
-| Devices are listed and none has state `device` | Name every serial and its state, such as `unauthorized` or `offline`, and explain how to correct it. |
+| Devices are listed and none has state `device` | Name every serial and its state. An `unauthorized` device is told to accept the USB debugging prompt. An `offline` device is told to reconnect. A state that is not present is not mentioned. |
 | One device has state `device`, and `device_id` is unset | Select it. Extra unauthorized devices do not block that choice. |
-| Several devices have state `device`, and `device_id` is unset | Print the serials and ask the user to set `device_id` in `config.json`. There is no interactive prompt. |
+| Several devices have state `device`, and `device_id` is unset | Exit with code 2. Stderr is one sentence and names only the ready serials: `More than one Android device is ready (SERIAL, SERIAL); set device_id in config.json to one of these serials.` |
 | `device_id` is set and that device has state `device` | Select it even when other devices are connected. |
-| `device_id` is set and that device is connected in another state | Name the serial and the state. |
+| `device_id` is set and that device is connected in another state | Name the serial and the state, then give the same correction used when no device is ready. |
 | `device_id` is set and that device is absent | Say it was not found, and list the connected devices with their states. |
 
-Selection is not interactive. The assignment says to use the configured `device_id` or ask the user to configure one. A message that lists the devices and points at `config.json` can be unit tested and does not wait on stdin.
+Selection is not interactive. The assignment says: if more than one usable device is connected, either select the configured `device_id` or ask the user to configure one. A configured `device_id` whose state is `device` is the first branch. The second branch is the sentence above: it lists the ready serials and tells the user to set `device_id` in `config.json`. The program then exits. It does not call `input()`, it does not read stdin, and it does not pick a device by itself. Devices whose state is not `device` are left out of that serial list. The sentence goes to stderr, contains no traceback, and does not write `report.txt`. The unit test asserts that full sentence, and `main` returns 2 for it without writing `report.txt`.
 
 ### 4.3 Device information
 
@@ -174,7 +175,7 @@ The order is fixed. Each result is `PASS`, `FAIL`, or `SKIP`, with a short expla
 | Application installation | `adb -s SERIAL shell pm path PACKAGE` | Exit code 0 and a line starts with `package:` | No package path |
 | Launch application | `adb -s SERIAL shell monkey -p PACKAGE -c android.intent.category.LAUNCHER 1` | Exit code 0, and the output does not contain `No activities found` or `monkey aborted` | The command failed |
 
-If application installation is `FAIL`, the launch check is `SKIP` with an explanation that the package is not installed. `monkey` is not run in that case.
+The assignment states: if the application is not installed, report the installation test as `FAIL` and the launch test as `SKIP`. When `pm path` does not report a package path, installation is `FAIL` and launch is `SKIP` with the explanation `Skipped because PACKAGE is not installed.` `monkey` is not run in that case. The sample report in section 4.6 is that case. A timeout or other ADB failure during the installation check is also `FAIL`, and launch is `SKIP` because installation could not be confirmed. That explanation does not say the package is not installed.
 
 The launch check is a command-level check. There is no visual UI verification.
 
@@ -251,12 +252,7 @@ Expected messages go to stderr as one readable sentence. They do not include a t
 
 An unexpected exception that is not `ConfigError` or `AdbError` propagates. The program does not use a blanket `except Exception`, so a bug stays visible.
 
-Documented commands:
-
-```bash
-python main.py
-python main.py --config config.json --report report.txt --logs logs
-```
+The documented command is `python main.py`. It reads `config.json`, writes `report.txt`, and saves failure logs under `logs/`.
 
 ### 4.8 Automated tests
 
@@ -296,9 +292,35 @@ The README explains:
 
 ### 4.10 CI
 
-`.github/workflows/ci.yml` runs on `push` and `pull_request`.
+`.github/workflows/ci.yml` is the workflow this plan promises. It is already in the repository, and a reviewer can check the file against this block:
 
-The job uses `ubuntu-latest`, installs Python 3.12, installs `pytest`, and runs `pytest`. It does not install ADB and it does not use a device.
+```yaml
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: python -m pip install pytest
+
+      - name: Run pytest
+        run: pytest
+```
+
+The job does not install ADB and it does not use a device. The assignment PDF does not mention this file. The file stays because the project runs its tests on every push and pull request.
 
 ### 4.11 Acceptance criteria
 
@@ -431,7 +453,7 @@ Done when the full `pytest` suite passes without ADB.
 
 File: `.github/workflows/ci.yml`.
 
-The workflow installs Python 3.12 and `pytest`, then runs `pytest`, on push and pull request.
+The file is the workflow in section 4.10. Done when that file triggers on push and pull request, uses `ubuntu-latest` and Python 3.12, installs `pytest`, runs `pytest`, and does not install ADB.
 
 ### Step 7. README
 

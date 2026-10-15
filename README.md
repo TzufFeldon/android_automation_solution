@@ -31,15 +31,20 @@ Edit `config.json` before running:
 
 The version on the device may look like `14` or `8.1.0`. The check uses the leading integer, so `8.1.0` counts as major version 8. A float such as `10.0` is not a valid `minimum_android_version`. JSON `true` is rejected as well, because a boolean is not an integer version.
 
-When more than one device is in the `device` state, set `device_id` to one of the serials printed in the error. There is no interactive prompt.
+When more than one device is in the `device` state and `device_id` is unset, the program exits with code 2 and prints one sentence to stderr:
+
+```text
+More than one Android device is ready (SERIAL, SERIAL); set device_id in config.json to one of these serials.
+```
+
+Only serials whose state is `device` appear in that list. Set `device_id` to one of them and run the tool again. There is no interactive prompt.
 
 ## Run
 
-From the project root:
+From the project root, one command reads `config.json`, runs the checks, writes `report.txt`, and saves a failure log under `logs/` when a check fails:
 
 ```bash
 python main.py
-python main.py --config config.json --report report.txt --logs logs
 ```
 
 | Exit code | Meaning | `report.txt` |
@@ -48,11 +53,11 @@ python main.py --config config.json --report report.txt --logs logs
 | 1 | At least one check failed. | Written |
 | 2 | Configuration is missing or invalid, `adb` is not on `PATH`, no device is connected, a device is unauthorized or offline, or a device cannot be selected. | Not written |
 
-Setup failures print one sentence to stderr and do not include a traceback. An unexpected programming error still shows a traceback.
+Setup failures print one sentence to stderr and do not include a traceback. An unauthorized device is told to accept the USB debugging prompt. An offline device is told to reconnect. The message names only the states that are actually connected. An unexpected programming error still shows a traceback.
 
 Each failed check tries to save `logs/YYYYMMDD-HHMMSS_<check_name>.txt`. If logcat times out or fails, the check stays `FAIL` and the report adds `Log capture failed`. Passing and skipped checks do not create a log file.
 
-Launch is a command check. The tool runs `monkey` with category `android.intent.category.LAUNCHER`. It does not look at the screen. If the package is not installed, launch is `SKIP` and `monkey` is not run.
+Launch is a command check. The tool runs `monkey` with category `android.intent.category.LAUNCHER`. It does not look at the screen. If the package is not installed, installation is `FAIL`, launch is `SKIP`, and `monkey` is not run. A timeout or other ADB failure on the installation check also skips launch, and that explanation does not say the package is missing.
 
 ## Tests
 
@@ -64,6 +69,8 @@ pytest
 The tests mock `subprocess.run`. They cover invalid configuration, device selection, a fully passing run, a failed check, log capture, report totals, and exit codes 0, 1, and 2.
 
 ## Project structure
+
+This repository is the `android_automation_solution/` directory from the assignment diagram. `main.py`, `config.json`, `android_runner/`, `tests/`, `README.md`, and `logs/` are at the repository root. There is no nested copy of that directory.
 
 ```text
 main.py                 Entry point and exit codes

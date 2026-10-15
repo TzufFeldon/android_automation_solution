@@ -265,6 +265,24 @@ def test_package_line_with_leading_space_passes(tmp_path: Path) -> None:
     assert results[3].status is Status.PASS
 
 
+def test_install_adb_failure_does_not_claim_the_package_is_missing(
+    tmp_path: Path,
+) -> None:
+    adb = _passing_adb(
+        {("pm", "path", _PACKAGE): AdbError("adb is not available")}
+    )
+
+    results = run_checks(adb, _config(), _info(), tmp_path / "logs")
+
+    assert results[3].status is Status.FAIL
+    assert results[3].explanation == f"The installation check for {_PACKAGE} failed."
+    assert "not installed" not in results[3].explanation
+    assert results[4].status is Status.SKIP
+    assert "could not be confirmed" in results[4].explanation
+    assert "not installed" not in results[4].explanation
+    assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
+
+
 def test_install_timeout_skips_launch_and_does_not_claim_the_package_is_missing(
     tmp_path: Path,
 ) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,40 @@ def test_adb_setup_error_exits_2_without_a_report(
     captured = capsys.readouterr()
     assert code == 2
     assert "No Android device or emulator is connected." in captured.err
+    assert "Traceback" not in captured.err
+    assert not (tmp_path / "report.txt").exists()
+
+
+def test_several_ready_devices_exit_2_without_a_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_which(name: str) -> str:
+        assert name == "adb"
+        return "/usr/bin/adb"
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert args == ["adb", "devices"]
+        stdout = (
+            "List of devices attached\n"
+            "emulator-5554\tdevice\n"
+            "emulator-5556\tdevice\n"
+        )
+        return subprocess.CompletedProcess(args, 0, stdout, "")
+
+    monkeypatch.setattr("android_runner.adb.shutil.which", fake_which)
+    monkeypatch.setattr("android_runner.adb.subprocess.run", fake_run)
+    config = _write_config(tmp_path)
+
+    code = main(_argv(config, tmp_path))
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.err == (
+        "More than one Android device is ready (emulator-5554, emulator-5556); "
+        "set device_id in config.json to one of these serials.\n"
+    )
     assert "Traceback" not in captured.err
     assert not (tmp_path / "report.txt").exists()
 

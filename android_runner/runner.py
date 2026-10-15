@@ -117,11 +117,10 @@ def _installation(adb: AdbClient, config: AppConfig, info: DeviceInfo) -> CheckR
     try:
         result = adb.shell(info.serial, "pm", "path", package_name)
     except AdbError as exc:
-        explanation = (
-            f"The installation check for {package_name} timed out."
-            if exc.timed_out
-            else f"Package {package_name} is not installed."
-        )
+        if exc.timed_out:
+            explanation = f"The installation check for {package_name} timed out."
+        else:
+            explanation = f"The installation check for {package_name} failed."
         return _fail(_INSTALL, explanation)
     if result.returncode == 0 and _has_package_line(result):
         return _pass(_INSTALL, f"Package {package_name} is installed.")

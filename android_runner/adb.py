@@ -222,8 +222,8 @@ def _select_named(device_id: str, devices: list[DeviceRecord]) -> str:
         )
     if match.state != "device":
         raise AdbError(
-            f"Android device {device_id} is connected with state {match.state}, "
-            "so it cannot be selected."
+            f"Android device {device_id} is connected with state {match.state}; "
+            f"{_correction({match.state})}."
         )
     return match.serial
 
@@ -234,10 +234,10 @@ def _select_only_ready(devices: list[DeviceRecord]) -> str:
         raise AdbError("No Android device or emulator is connected.")
     if not ready:
         listing = _describe(devices)
+        states = {record.state for record in devices}
         raise AdbError(
             "Android devices are connected but none is ready: "
-            f"{listing}; accept the USB debugging prompt on the device, "
-            "or reconnect a device that is offline."
+            f"{listing}; {_correction(states)}."
         )
     if len(ready) > 1:
         serials = ", ".join(record.serial for record in ready)
@@ -250,6 +250,27 @@ def _select_only_ready(devices: list[DeviceRecord]) -> str:
 
 def _describe(devices: list[DeviceRecord]) -> str:
     return ", ".join(f"{record.serial} ({record.state})" for record in devices)
+
+
+def _correction(states: set[str]) -> str:
+    """Say how to make the listed states usable.
+
+    Only states that are actually present are mentioned, so an offline device
+    is not told to accept a USB prompt and an unauthorized device is not told
+    to reconnect an offline one.
+    """
+    hints: list[str] = []
+    if "unauthorized" in states:
+        hints.append("accept the USB debugging prompt on the device")
+    if "offline" in states:
+        hints.append("reconnect a device that is offline")
+    if states - {"unauthorized", "offline"} or not hints:
+        hints.append(
+            "reconnect the device and confirm that adb devices shows state device"
+        )
+    if len(hints) == 1:
+        return hints[0]
+    return ", ".join(hints[:-1]) + ", or " + hints[-1]
 
 
 def _major_version(version: str | None) -> int | None:
