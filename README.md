@@ -26,14 +26,16 @@ Edit `config.json`, or pass another file with `--config`.
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `package_name` | Package to check, launch, and find in the foreground. |
-| `minimum_android_version` | Integer 1–99. `8.1.0` counts as 8. |
-| `minimum_battery` | Integer 0–100. The level must be greater than this value. |
-| `minimum_free_storage_mb` | Integer 0–1048576. Free MiB on `/data` must be greater than this value. |
-| `device_id` | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a list when several are ready. |
-| `interval_seconds` | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C stops after the current pass. |
+
+| Field                     | Meaning                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `package_name`            | Package to check, launch, and find in the foreground.                                                                           |
+| `minimum_android_version` | Integer 1–99. `8.1.0` counts as 8.                                                                                              |
+| `minimum_battery`         | Integer 0–100. The level must be greater than this value.                                                                       |
+| `minimum_free_storage_mb` | Integer 0–1048576. Free MiB on `/data` must be greater than this value.                                                         |
+| `device_id`               | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a list when several are ready. |
+| `interval_seconds`        | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C stops after the current pass.              |
+
 
 `package_name`, `minimum_android_version`, `minimum_battery`, and `minimum_free_storage_mb` are required. Floats, booleans, and unknown keys are rejected. Missing fields are named in the error. The file is validated before any ADB call.
 
@@ -90,13 +92,15 @@ android_automation_solution/
 |-- README.md
 ```
 
-| Module | Responsibility |
-| --- | --- |
-| `main.py` | Parse `--config`, `--report`, and `--logs`. Own the exit code and the optional interval loop. |
-| `android_runner.config` | Read and validate `config.json` into `AppConfig`. |
-| `android_runner.adb` | Run ADB, select one serial, and collect device facts. |
-| `android_runner.runner` | Run the checks and attach a failure log. |
-| `android_runner.report` | Render and write `report.txt` and the sibling JSON report. |
+
+| Module                  | Responsibility                                                                                |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `main.py`               | Parse `--config`, `--report`, and `--logs`. Own the exit code and the optional interval loop. |
+| `android_runner.config` | Read and validate `config.json` into `AppConfig`.                                             |
+| `android_runner.adb`    | Run ADB, select one serial, and collect device facts.                                         |
+| `android_runner.runner` | Run the checks and attach a failure log.                                                      |
+| `android_runner.report` | Render and write `report.txt` and the sibling JSON report.                                    |
+
 
 Design choices:
 
@@ -108,24 +112,30 @@ Design choices:
 - `interval_seconds` repeats the same pass and overwrites both reports. The serial chosen on the first pass is kept, so the prompt is not repeated.
 - JSON is written beside the text report so a person and a script can read the same run. There is no HTML report.
 
+
+
 ## Failure behavior and assumptions
 
-| Exit | When | Report |
-| --- | --- | --- |
-| 0 | No check failed. `SKIP` is not a failure. | Written |
-| 1 | At least one check failed. | Written |
-| 2 | Bad config, missing `adb`, no selectable device, or a report cannot be written. | Not written for that pass |
+
+| Exit | When                                                                            | Report                    |
+| ---- | ------------------------------------------------------------------------------- | ------------------------- |
+| 0    | No check failed. `SKIP` is not a failure.                                       | Written                   |
+| 1    | At least one check failed.                                                      | Written                   |
+| 2    | Bad config, missing `adb`, no selectable device, or a report cannot be written. | Not written for that pass |
+
 
 Exit 2 prints one sentence on stderr and does not print a traceback.
 
-| Condition | What the tool prints |
-| --- | --- |
-| `adb` is not on `PATH` | Install Android SDK Platform-Tools and verify with `adb version`. |
-| No device | No Android device or emulator is connected. |
-| `unauthorized` or `offline` | The serial, the state, and how to correct it. |
-| Invalid configuration | The missing or invalid field. No traceback. |
+
+| Condition                         | What the tool prints                                                                                                        |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `adb` is not on `PATH`            | Install Android SDK Platform-Tools and verify with `adb version`.                                                           |
+| No device                         | No Android device or emulator is connected.                                                                                 |
+| `unauthorized` or `offline`       | The serial, the state, and how to correct it.                                                                               |
+| Invalid configuration             | The missing or invalid field. No traceback.                                                                                 |
 | An ADB command fails or times out | A short command error. Device selection stops the run. A check command fails that check and the remaining checks still run. |
-| Logcat cannot be saved | The original `FAIL` is kept, the report names the failed log step, and the report is still written. |
+| Logcat cannot be saved            | The original `FAIL` is kept, the report names the failed log step, and the report is still written.                         |
+
 
 Assumptions:
 
@@ -138,6 +148,8 @@ Assumptions:
 - A continuous run overwrites `report.txt` and `report.json`. Earlier passes are not kept.
 - Tests mock `subprocess.run`. They do not need a device or an `adb` binary.
 
+
+
 ## Tests
 
 ```bash
@@ -147,12 +159,12 @@ python -m pip install pytest && python -m pytest     # Windows
 
 Tests mock `subprocess.run`. No device or `adb` binary is required. They cover valid and invalid configuration, a ready device and an unauthorized device, a full passing run, a failing check, log capture, and report totals. GitHub Actions runs `pytest` on Ubuntu with Python 3.12.
 
-## Improvements you would make with more time
+## Future Improvements
 
-- Write an HTML report next to the text and JSON reports.
 - Keep each interval pass instead of overwriting the same two files.
 - Retry one timed-out ADB command before failing the check.
 - After `monkey`, wait briefly for the package to become the resumed activity instead of reading it once immediately.
 - Make storage, network, screen, and foreground optional in config, so a file with only the three base fields still runs.
 - Summarize crash blocks in the failure log (exception and process) instead of only counting error lines.
 - Run the same pytest job on Windows as well as Ubuntu.
+
