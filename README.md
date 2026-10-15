@@ -1,22 +1,20 @@
 # Android Python Automation
 
-Command-line checks for one Android device. The tool reads `config.json`, runs nine checks through ADB, writes `report.txt` and `report.json`, and saves the most recent logcat lines when a check fails.
-
-Python 3.12 or newer. The program uses the standard library only.
+Checks one Android device through ADB and writes `report.txt` and `report.json`. A failed check also saves recent logcat lines under `logs/`. Python 3.12 or newer, standard library only.
 
 ## Prerequisites and device setup
 
-- Python 3.12 or newer from [python.org](https://www.python.org/downloads/). On macOS the command is `python3`. On Windows, select "Add python.exe to PATH" and use `python`.
-- [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) on `PATH`. Confirm with `adb version`.
-  - macOS: `brew install --cask android-platform-tools`, or add the unzipped platform-tools directory to `PATH`.
-  - Windows: add the unzipped platform-tools folder to `Path`. If the phone stays `unauthorized`, install the maker's USB driver or the [Google USB Driver](https://developer.android.com/studio/run/win-usb).
-- A device or emulator that `adb devices` lists as `device`. When several are ready, a terminal asks which one to check. Enable USB debugging and accept the prompt on the phone. An emulator needs no USB driver. `unauthorized` and `offline` are not ready.
+- Python 3.12+. On macOS use `python3`. On Windows, add `python.exe` to `PATH` and use `python`.
+- [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) on `PATH` (`adb version`).
+  - macOS: `brew install --cask android-platform-tools`
+  - Windows: add the unzipped folder to `Path`. If the phone stays `unauthorized`, install the maker's USB driver or the [Google USB Driver](https://developer.android.com/studio/run/win-usb).
+- `adb devices` must list the phone or emulator as `device`. Enable USB debugging and accept the prompt. `unauthorized` and `offline` are not ready.
 
-Run from the project root. `config.json`, `report.txt`, `report.json`, and `logs/` are relative to the current directory.
+Run from the project root. Paths are relative to the current directory. The tool does not search for `adb` outside `PATH`.
 
-## Configuration and how to run
+## Configuration
 
-Edit `config.json`:
+Edit `config.json`, or pass another file with `--config`.
 
 ```json
 {
@@ -30,183 +28,131 @@ Edit `config.json`:
 
 | Field | Meaning |
 | --- | --- |
-| `package_name` | Package name, such as `com.android.settings`. |
-| `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as 8. |
-| `minimum_battery` | Integer from 0 through 100. The level must be greater than this value. Equal fails, including 100 against 100. |
-| `minimum_free_storage_mb` | Integer from 0 through 1048576. Free mebibytes on `/data` must be greater than this value. Equal fails. |
-| `device_id` | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a numbered list when a terminal has several. Leading or trailing spaces are rejected. |
-| `interval_seconds` | Optional wait between passes, an integer from 1 through 86400. Omit it or set `null` for a single pass. Ctrl+C stops after the last completed pass and keeps that exit code. Later passes keep the serial chosen on the first pass. |
+| `package_name` | Package to check, launch, and find in the foreground. |
+| `minimum_android_version` | Integer 1–99. `8.1.0` counts as 8. |
+| `minimum_battery` | Integer 0–100. The level must be greater than this value. |
+| `minimum_free_storage_mb` | Integer 0–1048576. Free MiB on `/data` must be greater than this value. |
+| `device_id` | Optional serial. Omit it, or set `null` or `""`, to use the only ready device, or to choose from a list when several are ready. |
+| `interval_seconds` | Optional seconds between passes, 1–86400. Omit it or set `null` for one pass. Ctrl+C stops after the current pass. |
 
-Floats, booleans, and unknown keys are rejected. Missing fields are named in the error.
+`package_name`, `minimum_android_version`, `minimum_battery`, and `minimum_free_storage_mb` are required. Floats, booleans, and unknown keys are rejected. Missing fields are named in the error. The file is validated before any ADB call.
 
-```bash
-# macOS
-python3 main.py
-
-# Windows
-python main.py
-```
-
-Optional paths: `--config`, `--report`, and `--logs` (defaults are `config.json`, `report.txt`, and `logs`). Each completed pass also writes a JSON report beside the text file. The JSON path uses a `.json` suffix, so `report.txt` is accompanied by `report.json`. A `--report` path that already ends in `.json` stays the text file, and the JSON copy is named `<name>.json.json`.
-
-The nine checks run in this order:
-
-1. **Device is reachable.** `echo hello` exits 0 and prints `hello`.
-2. **Android version.** The major version from `ro.build.version.release` is at least the minimum.
-3. **Battery level.** The percent from `dumpsys battery` is above the minimum.
-4. **Free storage.** Available space from `df -k /data` is above `minimum_free_storage_mb`. The value is whole mebibytes, truncated toward zero.
-5. **Network.** `ip route show table all` prints a line whose first field is `default` and that does not contain `dummy0`. A missing route means the device cannot reach other networks.
-6. **Screen state.** `dumpsys power` reports wakefulness `Awake`. When that line is absent, `mScreenOn=true` passes. The tool does not unlock the screen or turn it on.
-7. **Application installation.** `pm path <package>` prints a line that starts with `package:`.
-8. **Launch application.** `monkey` with category `android.intent.category.LAUNCHER` exits 0, and the output does not contain `No activities found` or `monkey aborted`.
-9. **Foreground activity.** The first `topResumedActivity` belongs to the configured package. When that marker is absent, the first `mResumedActivity` is used.
-
-Version and battery reuse values already collected. If installation fails, launch and the foreground check are `SKIP`. `monkey` is not run, and the resumed activity is not read.
-
-## Unit tests
+## Run
 
 ```bash
-# macOS
-python3 -m pip install pytest
-python3 -m pytest
-
-# Windows
-python -m pip install pytest
-python -m pytest
+python3 main.py   # macOS
+python main.py    # Windows
 ```
 
-The tests mock `subprocess.run`. They cover configuration, device selection, the terminal prompt, a repeated run, a passing run, a failed check, log capture, the text report, the JSON report, and exit codes 0, 1, and 2. No device or `adb` binary is required.
+`--config`, `--report`, and `--logs` override `config.json`, `report.txt`, and `logs`. Each pass also writes JSON beside the text file (`report.txt` → `report.json`).
 
-GitHub Actions runs `pytest` from `uv.lock` on Ubuntu with Python 3.12, on pushes to `main` and on pull requests. That job does not install ADB.
+Several ready devices prompt once on a terminal. Without a terminal the run exits 2 and names the serials. Later interval passes keep the serial from the first pass and overwrite both reports. Ctrl+C during a pass or during the wait stops after the current pass and keeps the exit code of the last completed report. Ctrl+C before any report exits 2.
+
+## Checks
+
+A failure does not stop the rest. If installation fails, launch and the foreground check are `SKIP`. The tool does not install the package, turn the screen on, unlock the device, join a network, or free storage.
+
+1. Device answers `echo hello`.
+2. Android major version meets the minimum.
+3. Battery percent is above the minimum.
+4. Free space on `/data` is above the minimum.
+5. A default route exists and is not `dummy0`.
+6. The screen is awake. The tool does not turn it on.
+7. The package is installed (`pm path`).
+8. `monkey` can launch it. Success is the command result, not a visual check.
+9. The resumed activity belongs to that package.
+
+Checks 1–3 and 7–8 are the required set. Checks 4–6 and 9 are extra checks from the optional extensions (storage, network, screen state, foreground activity).
+
+A failed check writes `logs/YYYYMMDD-HHMMSS_<check_name>.log`. The file is logcat from the device clock read just before that check, cut to the most recent 1 MB when larger. Installation, launch, and foreground logs keep lines that mention the package, plus crash blocks. `PASS` and `SKIP` do not write a log. If the clock, logcat, or the write fails, the check stays `FAIL` and the report says which step failed.
+
+## Reports
+
+`report.txt` lists the device, each check with a one-line explanation, totals, and an overall `PASS` or `FAIL`. Device fields are the serial, Android version, model, manufacturer, and battery percent. Unread text fields print as `unknown`.
+
+`report.json` has the same result: device fields, a `checks` array, `totals`, and `overall`. Unread device fields are JSON `null`. `log_path` is set when a failure log was saved.
+
+`Overall` is `PASS` when no check is `FAIL`. `SKIP` is not a failure.
 
 ## Project structure and design choices
 
 ```text
-main.py                 Entry point and exit codes
-config.json             Values to edit
-android_runner/
-    config.py           Load and validate configuration
-    adb.py              ADB commands, device selection, device info
-    runner.py           Nine checks and failure logs
-    report.py           report.txt and report.json
-tests/                  pytest, with subprocess mocked
-.github/workflows/ci.yml
-logs/                   Failure logs from a run
+android_automation_solution/
+|-- main.py
+|-- config.json
+|-- android_runner/
+|   |-- adb.py
+|   |-- config.py
+|   |-- runner.py
+|   |-- report.py
+|-- tests/
+|-- logs/
+|-- README.md
 ```
 
-- Configuration is validated before any ADB call. With `interval_seconds`, each pass overwrites `report.txt` and `report.json`. A pass that cannot start or cannot write either file stops the loop with exit 2.
-- ADB commands are argument lists. `shell=True` is not used. Each call times out after 20 seconds.
-- Several ready devices prompt on a terminal once per process. Later passes of an interval run keep that serial. `device_id` skips the prompt. Without a terminal the run exits 2 and names the serials.
-- A failed check does not stop the others. A failed log capture leaves the check as `FAIL` and says whether the device clock, logcat, or the log file was the problem.
-- Launch success is the `monkey` result. A later check reads the resumed activity. Screen state is read from `dumpsys power` and is not changed.
+| Module | Responsibility |
+| --- | --- |
+| `main.py` | Parse `--config`, `--report`, and `--logs`. Own the exit code and the optional interval loop. |
+| `android_runner.config` | Read and validate `config.json` into `AppConfig`. |
+| `android_runner.adb` | Run ADB, select one serial, and collect device facts. |
+| `android_runner.runner` | Run the checks and attach a failure log. |
+| `android_runner.report` | Render and write `report.txt` and the sibling JSON report. |
+
+Design choices:
+
+- Configuration is validated before the first ADB call. A bad file exits 2 with one sentence and no traceback.
+- One process checks one device. `device_id` selects that serial. Without it, the only ready device is used. Several ready devices prompt on a terminal, or exit 2 when stdin is not a terminal.
+- ADB is invoked as an argument list. `shell=True` is not used. Each call waits at most 20 seconds.
+- Version and battery are read once with the other device facts and reused by those checks. A field that cannot be read stays empty and fails its own check. It does not abort the run.
+- Launch success is the `monkey` result. The foreground check is separate and reads the resumed activity afterward.
+- `interval_seconds` repeats the same pass and overwrites both reports. The serial chosen on the first pass is kept, so the prompt is not repeated.
+- JSON is written beside the text report so a person and a script can read the same run. There is no HTML report.
 
 ## Failure behavior and assumptions
 
-| Exit code | When | `report.txt` and `report.json` |
+| Exit | When | Report |
 | --- | --- | --- |
 | 0 | No check failed. `SKIP` is not a failure. | Written |
 | 1 | At least one check failed. | Written |
-| 2 | Bad configuration, missing `adb`, no selectable device, or either report file cannot be written. | Not written for that pass |
+| 2 | Bad config, missing `adb`, no selectable device, or a report cannot be written. | Not written for that pass |
 
-Exit 2 prints one sentence to stderr, without a traceback. The message names only states that are connected: accept the USB debugging prompt for `unauthorized`, reconnect for `offline`. On a terminal, several ready devices print a numbered list and wait for a choice. Without a terminal they print:
+Exit 2 prints one sentence on stderr and does not print a traceback.
 
-```text
-More than one Android device is ready (SERIAL, SERIAL); set device_id in config.json to one of these serials.
-```
-
-A failed check writes `logs/YYYYMMDD-HHMMSS_<check_name>.log`. Before the check, the tool reads the device clock with `adb shell date +%m-%dT%H:%M:%S`, replaces `T` with a space, and appends `.000`. The `T` keeps the format as one argument, because the device `date` command rejects a format that contains a space. The log is `adb logcat -d -t MM-DD HH:MM:SS.mmm` from that time. The buffer is not cleared. An empty window is saved as returned. If the clock cannot be read, no log file is written and the report says the device clock could not be read. A logcat failure says logcat could not be read. A file failure says the log file could not be written. Installation, launch, and foreground logs keep lines that contain the package name, and a `FATAL EXCEPTION` or `AndroidRuntime` block through the next blank line. Other checks keep the whole window. Threadtime lines at level `E` or `F` add `N error lines in this check. First: ...` and do not change `PASS` or `FAIL`. A log still larger than 1 MB is cut to the most recent 1 MB, and the report adds `Log truncated to the most recent 1 MB.` `PASS` and `SKIP` do not write a log.
+| Condition | What the tool prints |
+| --- | --- |
+| `adb` is not on `PATH` | Install Android SDK Platform-Tools and verify with `adb version`. |
+| No device | No Android device or emulator is connected. |
+| `unauthorized` or `offline` | The serial, the state, and how to correct it. |
+| Invalid configuration | The missing or invalid field. No traceback. |
+| An ADB command fails or times out | A short command error. Device selection stops the run. A check command fails that check and the remaining checks still run. |
+| Logcat cannot be saved | The original `FAIL` is kept, the report names the failed log step, and the report is still written. |
 
 Assumptions:
 
-- `adb devices` already shows the phone as `device`. The tool does not authorize the computer, install the package, or grant permissions.
-- A missing battery `scale`, or `scale: 100`, uses `level` as the percent. Any other positive scale uses `round(level * 100 / scale)`. A result outside 0 through 100 is unreadable.
-- The saved log starts at the device clock reading taken before that check, and is cut to 1 MB when it is still too large. Installation, launch, and foreground logs also keep the package and crash blocks.
-- Free storage is the `Available` column of `df -k /data`, in 1024-byte blocks, divided by 1024 and truncated. A missing column is unreadable.
-- Network passes when a routing line starts with `default` and does not contain `dummy0`. The tool does not open a connection.
-- Screen state passes for wakefulness `Awake`, or for `mScreenOn=true` when no wakefulness line is present. `Asleep`, `Dozing`, and `Dreaming` fail. Numeric wakefulness `0` through `3` uses the same names.
-- `device_id` must match the serial exactly. An existing `report.txt` and `report.json` are overwritten.
+- The computer is already authorized for USB debugging. The tool does not accept the device prompt for you.
+- State `device` is the only usable state. `unauthorized` and `offline` are reported and not checked.
+- The configured package is already installed when launch should be attempted. A missing package is `FAIL` for installation and `SKIP` for launch and foreground.
+- The screen, network, and free space are only observed. The tool does not change them.
+- A default route on `dummy0` does not count as connectivity.
+- Paths are relative to the working directory unless an absolute path is passed.
+- A continuous run overwrites `report.txt` and `report.json`. Earlier passes are not kept.
+- Tests mock `subprocess.run`. They do not need a device or an `adb` binary.
 
-## Improvements with more time
+## Tests
 
-- Confirm launch from the resumed activity, not only from `monkey`.
-
-## Sample report
-
-```text
-Android Automation Report: emulator-5554
-========================================
-Run: 2026-10-15 14:33:07
-
-Device
-------
-Device ID: emulator-5554
-Android version: 14
-Model: sdk_gphone64_arm64
-Manufacturer: Google
-Battery: 15%
-
-Checks
-------
-Device is reachable: PASS
-    Command 'echo hello' succeeded and returned 'hello'.
-Android version: PASS
-    Major version 14 is greater than or equal to minimum 10.
-Battery level: FAIL
-    Battery level is 15%, which is lower than 20%.
-    Log: logs/20261013-215301_battery_level.log
-Free storage: PASS
-    Free storage is 200 MB, which is greater than 100 MB.
-Network: PASS
-    A default network route is present.
-Screen state: PASS
-    Screen state is Awake.
-Application installation: FAIL
-    Package com.android.settings is not installed.
-    Log: logs/20261013-215302_application_installation.log
-Launch application: SKIP
-    Skipped because com.android.settings is not installed.
-Foreground activity: SKIP
-    Skipped because com.android.settings is not installed.
-
-Totals
-------
-Passed: 5
-Failed: 2
-Skipped: 2
-All: 9
-
-Overall: FAIL
+```bash
+python3 -m pip install pytest && python3 -m pytest   # macOS
+python -m pip install pytest && python -m pytest     # Windows
 ```
 
-`report.json` carries the same pass. Unread device fields are JSON `null`. An empty string stays `""`. `log_path` is a POSIX path when a failure log was saved, and `null` otherwise. The `checks` array has one object per check. The sample below shows the battery failure.
+Tests mock `subprocess.run`. No device or `adb` binary is required. They cover valid and invalid configuration, a ready device and an unauthorized device, a full passing run, a failing check, log capture, and report totals. GitHub Actions runs `pytest` on Ubuntu with Python 3.12.
 
-```json
-{
-  "ran_at": "2026-10-15 14:33:07",
-  "device": {
-    "id": "emulator-5554",
-    "android_version": "14",
-    "android_major": 14,
-    "model": "sdk_gphone64_arm64",
-    "manufacturer": "Google",
-    "battery_percent": 15
-  },
-  "checks": [
-    {
-      "name": "Battery level",
-      "status": "FAIL",
-      "explanation": "Battery level is 15%, which is lower than 20%.",
-      "log_path": "logs/20261013-215301_battery_level.log",
-      "log_note": null,
-      "log_error": null
-    }
-  ],
-  "totals": {
-    "passed": 5,
-    "failed": 2,
-    "skipped": 2,
-    "all": 9
-  },
-  "overall": "FAIL"
-}
-```
+## Improvements you would make with more time
+
+- Write an HTML report next to the text and JSON reports.
+- Keep each interval pass instead of overwriting the same two files.
+- Retry one timed-out ADB command before failing the check.
+- After `monkey`, wait briefly for the package to become the resumed activity instead of reading it once immediately.
+- Make storage, network, screen, and foreground optional in config, so a file with only the three base fields still runs.
+- Summarize crash blocks in the failure log (exception and process) instead of only counting error lines.
+- Run the same pytest job on Windows as well as Ubuntu.
