@@ -19,8 +19,3 @@ htmlcov/
 # Editors and OS
 .idea/
 .DS_Store
-
-# Runner output
-logs/*
-!logs/.gitkeep
-report.txt

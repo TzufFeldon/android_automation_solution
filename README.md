@@ -102,7 +102,7 @@ android_runner/
     report.py           report.txt
 tests/                  pytest, with subprocess mocked
 .github/workflows/ci.yml
-logs/                   Failure logs; contents are not committed
+logs/                   Failure logs from a run
 ```
 
 - ADB commands are argument lists. `shell=True` is not used.
