@@ -195,10 +195,11 @@ def test_version_check(
     ("level", "minimum", "status"),
     [
         (21, 20, Status.PASS),
-        (20, 20, Status.FAIL),
+        (20, 20, Status.PASS),
         (15, 20, Status.FAIL),
-        (100, 100, Status.FAIL),
-        (0, 0, Status.FAIL),
+        (100, 100, Status.PASS),
+        (99, 100, Status.FAIL),
+        (0, 0, Status.PASS),
         (1, 0, Status.PASS),
         (None, 20, Status.FAIL),
     ],
@@ -222,10 +223,10 @@ def test_battery_threshold(
         assert battery.explanation == "Battery level could not be read."
     elif status is Status.FAIL:
         assert battery.explanation == (
-            f"Battery level is {level}%, which is not strictly above {minimum}%."
+            f"Battery level is {level}%, which is lower than {minimum}%."
         )
     else:
-        assert "strictly above" in battery.explanation
+        assert "greater than or equal" in battery.explanation
     if status is Status.FAIL:
         assert battery.log_path is not None
     else:
@@ -248,7 +249,7 @@ def test_missing_package_fails_install_and_skips_launch_without_monkey(
     assert results[4].explanation == f"Skipped because {_PACKAGE} is not installed."
     assert results[4].log_path is None
     assert ("launch", "emulator-5554", _PACKAGE) not in adb.calls
-    log_path = logs / "20261013-215301_application_installation.txt"
+    log_path = logs / "20261013-215301_application_installation.log"
     assert results[3].log_path == log_path
     assert log_path.read_text(encoding="utf-8") == "log line\n"
 
@@ -342,8 +343,8 @@ def test_two_failures_in_the_same_second_get_distinct_log_files(
         logs,
     )
 
-    battery_log = logs / "20261013-215301_battery_level.txt"
-    install_log = logs / "20261013-215301_application_installation.txt"
+    battery_log = logs / "20261013-215301_battery_level.log"
+    install_log = logs / "20261013-215301_application_installation.log"
     assert results[2].log_path == battery_log
     assert results[3].log_path == install_log
     assert battery_log.read_text(encoding="utf-8") == "battery-log\n"
@@ -361,10 +362,10 @@ def test_logcat_failure_keeps_the_original_failure(tmp_path: Path) -> None:
 
     battery = results[2]
     assert battery.status is Status.FAIL
-    assert battery.explanation == "Battery level is 15%, which is not strictly above 20%."
+    assert battery.explanation == "Battery level is 15%, which is lower than 20%."
     assert battery.log_path is None
     assert battery.log_error == "Log capture failed"
-    assert list(logs.glob("*.txt")) == []
+    assert list(logs.glob("*.log")) == []
     assert results[3].status is Status.PASS
 
 

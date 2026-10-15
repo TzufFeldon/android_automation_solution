@@ -96,14 +96,15 @@ def _battery(config: AppConfig, info: DeviceInfo) -> CheckResult:
     level = info.battery_percent
     if level is None:
         return _fail(_BATTERY, "Battery level could not be read.")
-    if level > minimum:
+    if level >= minimum:
         return _pass(
             _BATTERY,
-            f"Battery level is {level}%, which is strictly above {minimum}%.",
+            f"Battery level is {level}%, which is greater than or equal "
+            f"to {minimum}%.",
         )
     return _fail(
         _BATTERY,
-        f"Battery level is {level}%, which is not strictly above {minimum}%.",
+        f"Battery level is {level}%, which is lower than {minimum}%.",
     )
 
 
@@ -178,7 +179,7 @@ def _with_log(
     try:
         logs_dir.mkdir(parents=True, exist_ok=True)
         text = adb.logcat(serial)
-        path = logs_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{_slug(result.name)}.txt"
+        path = logs_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{_slug(result.name)}.log"
         path.write_text(text, encoding="utf-8")
     except AdbError:
         return replace(result, log_error="Log capture failed")

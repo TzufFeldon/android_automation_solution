@@ -210,9 +210,9 @@ def test_failing_check_exits_1_and_writes_the_report(
 
     report = (tmp_path / "report.txt").read_text(encoding="utf-8")
     assert code == 1
-    assert "Battery level is 15%, which is not strictly above 20%." in report
+    assert "Battery level is 15%, which is lower than 20%." in report
     assert "Overall: FAIL" in report
-    assert list((tmp_path / "logs").glob("*battery_level.txt"))
+    assert list((tmp_path / "logs").glob("*battery_level.log"))
 
 
 def test_unexpected_error_propagates(

@@ -37,7 +37,7 @@ Edit `config.json` before running:
 | --- | --- |
 | `package_name` | Package name, for example `com.android.settings`. |
 | `minimum_android_version` | Integer from 1 through 99. `8.1.0` counts as major version 8. |
-| `minimum_battery` | Integer from 0 through 100. The level must be strictly above this value. `100` always fails. |
+| `minimum_battery` | Integer from 0 through 100. The level must be greater than or equal to this value. A level of `100` passes a threshold of `100`. |
 | `device_id` | Optional serial. Omit it, or set `null` or `""`, when only one device is ready. |
 
 A float such as `10.0` and JSON `true` are rejected. `device_id` with leading or trailing spaces is rejected.
@@ -70,7 +70,7 @@ python main.py
 
 Setup failures print one sentence to stderr, without a traceback. An unauthorized device is told to accept the USB debugging prompt. An offline device is told to reconnect. The message names only states that are connected.
 
-A failed check saves `logs/YYYYMMDD-HHMMSS_<check_name>.txt`. If logcat fails, the check stays `FAIL` and the report adds `Log capture failed`.
+A failed check saves `logs/YYYYMMDD-HHMMSS_<check_name>.log`. If logcat fails, the check stays `FAIL` and the report adds `Log capture failed`.
 
 Launch runs `monkey` with category `android.intent.category.LAUNCHER`. It does not inspect the screen. If the package is not installed, installation is `FAIL`, launch is `SKIP`, and `monkey` is not run.
 
@@ -108,7 +108,7 @@ logs/                   Failure logs; contents are not committed
 - ADB commands are argument lists. `shell=True` is not used.
 - Configuration is validated before any ADB call.
 - Device selection does not prompt.
-- The battery level must be strictly above `minimum_battery`.
+- The battery level must be greater than or equal to `minimum_battery`.
 - Version and battery checks reuse values already collected.
 - A failed log capture leaves the check as `FAIL`.
 
@@ -137,11 +137,11 @@ Device is reachable: PASS
 Android version: PASS
     Major version 14 is greater than or equal to minimum 10.
 Battery level: FAIL
-    Battery level is 15%, which is not strictly above 20%.
-    Log: logs/20261013-215301_battery_level.txt
+    Battery level is 15%, which is lower than 20%.
+    Log: logs/20261013-215301_battery_level.log
 Application installation: FAIL
     Package com.android.settings is not installed.
-    Log: logs/20261013-215302_application_installation.txt
+    Log: logs/20261013-215302_application_installation.log
 Launch application: SKIP
     Skipped because com.android.settings is not installed.
 

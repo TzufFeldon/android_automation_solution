@@ -25,11 +25,11 @@ Device is reachable: PASS
 Android version: PASS
     Major version 14 is greater than or equal to minimum 10.
 Battery level: FAIL
-    Battery level is 15%, which is not strictly above 20%.
-    Log: logs/20261013-215301_battery_level.txt
+    Battery level is 15%, which is lower than 20%.
+    Log: logs/20261013-215301_battery_level.log
 Application installation: FAIL
     Package com.android.settings is not installed.
-    Log: logs/20261013-215302_application_installation.txt
+    Log: logs/20261013-215302_application_installation.log
 Launch application: SKIP
     Skipped because com.android.settings is not installed.
 
@@ -82,14 +82,14 @@ def _sample_results() -> list[CheckResult]:
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level is 15%, which is not strictly above 20%.",
-            Path("logs/20261013-215301_battery_level.txt"),
+            "Battery level is 15%, which is lower than 20%.",
+            Path("logs/20261013-215301_battery_level.log"),
         ),
         _result(
             "Application installation",
             Status.FAIL,
             "Package com.android.settings is not installed.",
-            Path("logs/20261013-215302_application_installation.txt"),
+            Path("logs/20261013-215302_application_installation.log"),
         ),
         _result(
             "Launch application",
@@ -136,14 +136,14 @@ def test_log_capture_failure_is_a_separate_line() -> None:
         _result(
             "Battery level",
             Status.FAIL,
-            "Battery level is 15%, which is not strictly above 20%.",
+            "Battery level is 15%, which is lower than 20%.",
             log_error="Log capture failed",
         )
     ]
 
     text = render_report(_info(), results)
 
-    assert "    Battery level is 15%, which is not strictly above 20%." in text
+    assert "    Battery level is 15%, which is lower than 20%." in text
     assert "    Log capture failed" in text
     assert "Log:" not in text
     assert "Overall: FAIL" in text

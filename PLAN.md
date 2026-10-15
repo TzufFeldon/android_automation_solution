@@ -116,7 +116,7 @@ Validation rules in `load_config`:
 - An unknown field is rejected, so a typo is not ignored.
 - `package_name` matches `^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`.
 - `minimum_android_version` is an integer from 1 through 99. `true` and `10.0` are rejected. In Python `bool` is a subclass of `int`, so the boolean check comes before the integer check.
-- `minimum_battery` is an integer from 0 through 100. The value `100` is valid. The battery check requires a level strictly above it, so a threshold of 100 always fails that check.
+- `minimum_battery` is an integer from 0 through 100. The value `100` is valid. The battery check passes when the level is greater than or equal to it, so a level of 100 passes a threshold of 100.
 - A `device_id` with leading or trailing whitespace is rejected.
 
 `load_config` raises `ConfigError` with one sentence. It does not print and it does not call `sys.exit`. `main.py` prints the message to stderr and exits with code 2.
@@ -171,7 +171,7 @@ The order is fixed. Each result is `PASS`, `FAIL`, or `SKIP`, with a short expla
 | --- | --- | --- | --- |
 | Device is reachable | `adb -s SERIAL shell echo hello` | Exit code 0 and stripped `stdout` is `hello` | Any other result, including a timeout |
 | Android version | The collected `ro.build.version.release` value | The major version is greater than or equal to `minimum_android_version` | A lower version, or a version that cannot be parsed |
-| Battery level | The collected battery percentage | The percentage is strictly greater than `minimum_battery` | Equal to the threshold, below it, or unreadable |
+| Battery level | The collected battery percentage | The percentage is greater than or equal to `minimum_battery` | Below the threshold, or unreadable |
 | Application installation | `adb -s SERIAL shell pm path PACKAGE` | Exit code 0 and a line starts with `package:` | No package path |
 | Launch application | `adb -s SERIAL shell monkey -p PACKAGE -c android.intent.category.LAUNCHER 1` | Exit code 0, and the output does not contain `No activities found` or `monkey aborted` | The command failed |
 
@@ -189,7 +189,7 @@ For every `FAIL`:
 
 1. Create `logs/` if it does not exist.
 2. Run `adb -s SERIAL logcat -d`.
-3. Save `logs/YYYYMMDD-HHMMSS_test_slug.txt`. The check name becomes lowercase with `_` instead of spaces. Two checks that fail in the same second stay unique because the check name is part of the file name.
+3. Save `logs/YYYYMMDD-HHMMSS_test_slug.log`. The check name becomes lowercase with `_` instead of spaces. Two checks that fail in the same second stay unique because the check name is part of the file name.
 4. If logcat fails or times out, the check status stays `FAIL`, the original explanation is kept, and the report adds a `Log capture failed` line.
 
 `PASS` and `SKIP` do not create a log file.
@@ -217,11 +217,11 @@ Device is reachable: PASS
 Android version: PASS
     Major version 14 is greater than or equal to minimum 10.
 Battery level: FAIL
-    Battery level is 15%, which is not strictly above 20%.
-    Log: logs/20261013-215301_battery_level.txt
+    Battery level is 15%, which is lower than 20%.
+    Log: logs/20261013-215301_battery_level.log
 Application installation: FAIL
     Package com.android.settings is not installed.
-    Log: logs/20261013-215302_application_installation.txt
+    Log: logs/20261013-215302_application_installation.log
 Launch application: SKIP
     Skipped because com.android.settings is not installed.
 
@@ -269,7 +269,7 @@ Additional coverage for the error table and the check matrix:
 
 - No device, an `offline` device, several devices without `device_id`, and several devices with a matching `device_id`.
 - Missing `adb`.
-- A battery level equal to the threshold fails, and a level above the threshold passes.
+- A battery level equal to the threshold passes, and a level below the threshold fails.
 - A missing package is `FAIL` for installation and `SKIP` for launch.
 - A logcat failure keeps the original `FAIL`.
 - `main` returns 2 without a traceback for a broken configuration, 1 for a failing report, and 0 for a passing report.
@@ -283,7 +283,7 @@ The README explains:
 - Prerequisites: Python 3.12, Platform-Tools, USB debugging, and an authorized device or emulator.
 - How to edit `config.json`, including `device_id`.
 - How to run the tool and how to run `pytest`.
-- Project structure and the important decisions: no runtime dependencies, non-interactive device selection, `monkey` for launch, battery strictly above the threshold, and best-effort logcat.
+- Project structure and the important decisions: no runtime dependencies, non-interactive device selection, `monkey` for launch, battery greater than or equal to the threshold, and best-effort logcat.
 - Failure behavior, exit codes, and the fact that setup failures do not write a report.
 - The assumption that launch is a command check, not a screen check.
 - CI.
@@ -399,7 +399,7 @@ Assertions on the string returned by `render_report`: five device fields, five r
 
 `tests/test_runner.py`
 
-`AdbClient` is replaced by a fake. Covers a fully passing run, a battery level equal to the threshold, a missing package with `SKIP` for launch, a log file written on `FAIL`, and continuation after logcat fails.
+`AdbClient` is replaced by a fake. Covers a fully passing run, a battery level equal to the threshold that passes, a missing package with `SKIP` for launch, a log file written on `FAIL`, and continuation after logcat fails.
 
 `tests/test_main.py`
 
